@@ -1,12 +1,7 @@
 use anyhow::Result;
 use libsql::{de, Connection};
 
-use std::sync::Arc;
-
-use crate::{
-    profile::Profile,
-    roblox::{self, SOL_GROUP_ID},
-};
+use crate::profile::Profile;
 
 // shared db functions
 //

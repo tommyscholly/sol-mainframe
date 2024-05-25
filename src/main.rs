@@ -1,11 +1,11 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, post, put},
+    routing::{get, put},
     Json, Router,
 };
 
-use libsql::{Builder, Connection};
+use libsql::Builder;
 use toml::Table;
 
 use std::fs::read_to_string;
@@ -23,7 +23,7 @@ struct AppState {
     url: String,
 }
 
-async fn get_profile(State(state): State<AppState>, Path(id): Path<u64>) {
+async fn get_profile(State(_state): State<AppState>, Path(_id): Path<u64>) {
     todo!()
 }
 

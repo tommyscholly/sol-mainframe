@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
-use libsql::{de, Connection, Row};
+use libsql::{Connection, Row};
 use serde::{Deserialize, Serialize};
-
-use std::sync::Arc;
 
 use crate::{
     database,
