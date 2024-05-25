@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rank::{self, Rank};
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct Profile {
     pub user_id: u64,
     pub rank_id: u64,

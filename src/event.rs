@@ -7,7 +7,7 @@ use crate::{
     roblox::{self, SOL_GROUP_ID},
 };
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct Event {
     pub host: u64,
     pub attendance: Vec<u64>, // List of userids that attended the event, including the host

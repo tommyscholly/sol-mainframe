@@ -8,7 +8,7 @@ use axum::{
 use libsql::Builder;
 use toml::Table;
 
-use std::fs::read_to_string;
+use std::fs;
 
 mod database;
 mod event;
@@ -23,14 +23,44 @@ struct AppState {
     url: String,
 }
 
-async fn get_profile(State(_state): State<AppState>, Path(_id): Path<u64>) {
-    todo!()
+async fn get_profile(
+    State(state): State<AppState>,
+    Path(user_id): Path<u64>,
+) -> Json<Option<profile::Profile>> {
+    println!("Retrieving profile for {user_id}");
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
+        Ok(None) => {
+            println!("Profile {user_id} retrieval failed, not in SOL");
+            return Json(None);
+        }
+        Ok(Some((id, _))) => id,
+        Err(e) => panic!("{}", e.to_string()),
+    };
+
+    let (profile, in_db) = database::get_profile(user_id, sol_rank_id, conn).await;
+    if in_db {
+        println!("Retrieved {profile:?}");
+        return Json(Some(profile));
+    }
+
+    println!("Profile {user_id} retrieval failed, no profile found");
+    Json(None)
 }
 
 async fn put_event(
     State(state): State<AppState>,
     Json(body): Json<event::EventJsonBody>,
 ) -> StatusCode {
+    println!(
+        "Processing event hosted by {} at {}",
+        body.host, body.location
+    );
     let db = Builder::new_remote(state.url, state.token)
         .build()
         .await
@@ -50,6 +80,7 @@ async fn put_event(
 
     event.log_attendance(conn).await;
 
+    println!("Logged {event:?}");
     StatusCode::OK
 }
 
@@ -58,6 +89,7 @@ async fn get_hosted(
     State(state): State<AppState>,
     Path(host_id): Path<u64>,
 ) -> Json<Vec<event::Event>> {
+    println!("Retrieving events hosted by {host_id}");
     let db = Builder::new_remote(state.url, state.token)
         .build()
         .await
@@ -74,12 +106,13 @@ async fn get_hosted(
         events.push(event::Event::from_row(&r))
     }
 
+    println!("Successfully retrieved events for {host_id}");
     Json(events)
 }
 
 #[tokio::main]
 async fn main() {
-    let secrets = read_to_string("Secrets.toml").expect("Secrets.toml does not exist");
+    let secrets = fs::read_to_string("Secrets.toml").expect("Secrets.toml does not exist");
     let secrets_table = secrets.parse::<Table>().unwrap();
 
     let db_token_string = secrets_table.get("DB_TOKEN").unwrap().to_string();
