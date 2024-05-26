@@ -135,6 +135,19 @@ async fn get_event_info_by_info(
     Json(event)
 }
 
+async fn get_promotable(State(state): State<AppState>) -> Json<Vec<u64>> {
+    println!("Getting promotable users");
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let users = database::get_promotable(conn).await.unwrap_or(Vec::new());
+    println!("Promotable users {users:?}");
+    Json(users)
+}
+
 async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody>) -> StatusCode {
     println!(
         "Processing event hosted by {} at {}",
@@ -205,6 +218,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/profiles/:id", get(get_profile))
+        .route("/profiles/promotable", get(get_promotable))
         .route("/profiles/increment/:id/:inc", post(increment_events))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))

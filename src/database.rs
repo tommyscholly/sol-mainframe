@@ -118,3 +118,27 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
 
     Ok(())
 }
+
+pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
+    let mut rows = db
+        .query(
+            r#"
+        SELECT * FROM profiles
+        WHERE rank_id = 1 OR rank_id = 2 OR rank_id = 3 OR rank_id = 4 OR rank_id = 5"#,
+            (),
+        )
+        .await?;
+
+    let mut users = Vec::new();
+    while let Ok(Some(r)) = rows.next().await {
+        let profile = Profile::from_row(&r);
+        let rank = sol_util::rank::Rank::from_rank_id(profile.rank_id).unwrap();
+        if profile.marks_at_current_rank
+            >= rank.required_marks().expect("this shouldnt possibly fail")
+        {
+            users.push(profile.user_id);
+        }
+    }
+
+    Ok(users)
+}
