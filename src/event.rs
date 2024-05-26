@@ -16,7 +16,7 @@ impl Attendance for Event {
     async fn log_attendance(&self, db: Arc<Connection>) {
         let attendance = self.attendance.clone();
         for user_id in attendance {
-            let event_date = self.event_date.clone();
+            let event_date = self.event_date;
             let db_ref = db.clone();
             tokio::spawn(async move {
                 let sol_rank_id = match roblox::get_rank_in_group(SOL_GROUP_ID, user_id).await {

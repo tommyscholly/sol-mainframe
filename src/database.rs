@@ -1,5 +1,5 @@
 use anyhow::Result;
-use libsql::{de, Connection};
+use libsql::Connection;
 use sol_util::mainframe::{Event, Profile};
 
 use std::sync::Arc;
@@ -14,7 +14,7 @@ pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: &Connection) -> (Pr
 
     let profile_response = get_profile.query_row([user_id]).await;
     match profile_response {
-        Ok(profile_row) => (de::from_row::<Profile>(&profile_row).unwrap(), true),
+        Ok(profile_row) => (Profile::from_row(&profile_row), true),
         // errors if no row is returned, which means there is no profile in the db
         // (probably)
         Err(_) => (Profile::new(user_id, sol_rank_id), false),
@@ -90,7 +90,10 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                 profile.total_marks,
                 profile.marks_at_current_rank,
                 profile.events_attended_this_week,
-                profile.last_event_attended_date.unwrap().to_rfc3339(),
+                match profile.last_event_attended_date {
+                    Some(d) => d.to_rfc3339(),
+                    None => serde_json::to_string(&profile.last_event_attended_date).unwrap(),
+                },
                 profile.user_id,
             ),
         )
@@ -105,7 +108,10 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                 profile.total_marks,
                 profile.marks_at_current_rank,
                 profile.events_attended_this_week,
-                profile.last_event_attended_date.unwrap().to_rfc3339(),
+                match profile.last_event_attended_date {
+                    Some(d) => d.to_rfc3339(),
+                    None => serde_json::to_string(&profile.last_event_attended_date).unwrap()
+                }
             ))
             .await?;
     }

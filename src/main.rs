@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, put},
+    routing::{get, post, put},
     Json, Router,
 };
 
@@ -46,11 +46,48 @@ async fn get_profile(
     let (profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
     if in_db {
         println!("Retrieved {profile:?}");
-        return Json(Some(profile));
+        Json(Some(profile))
+    } else {
+        println!("No profile found, creating for {user_id}");
+        // ignoring error
+        let _ = database::update_profile(profile.clone(), in_db, conn.into()).await;
+        Json(Some(profile))
+    }
+}
+
+async fn increment_events(
+    State(state): State<AppState>,
+    Path((user_id, increment)): Path<(u64, i32)>,
+) -> StatusCode {
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
+        Ok(None) => {
+            println!("Profile {user_id} retrieval failed, not in SOL");
+            return StatusCode::NOT_FOUND;
+        }
+        Ok(Some((id, _))) => id,
+        Err(e) => panic!("{}", e.to_string()),
+    };
+    let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
+
+    profile.try_reset_events();
+    profile.try_update_rank(sol_rank_id);
+
+    profile.events_attended_this_week += increment;
+
+    profile.try_award_mark();
+
+    if let Err(e) = database::update_profile(profile, in_db, conn.into()).await {
+        eprintln!("Failed to update profile {}, with error {}", user_id, e);
+        return StatusCode::INTERNAL_SERVER_ERROR;
     }
 
-    println!("Profile {user_id} retrieval failed, no profile found");
-    Json(None)
+    StatusCode::OK
 }
 
 async fn get_attended(State(state): State<AppState>, Path(user_id): Path<u64>) -> Json<u64> {
@@ -168,6 +205,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/profiles/:id", get(get_profile))
+        .route("/profiles/increment/:id/:inc", post(increment_events))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))
         .route("/events/attended/:id", get(get_events_attended))
