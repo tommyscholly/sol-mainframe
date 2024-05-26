@@ -1907,7 +1907,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sol-events-service"
+name = "sol-mainframe"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1922,8 +1922,24 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sol-util",
  "tokio",
  "toml",
+]
+
+[[package]]
+name = "sol-util"
+version = "0.1.8"
+source = "git+https://github.com/solar-mechanicus/sol-util.git#bca7aa13678061ca2972b091b5bc21c5feb86bf2"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "libsql",
+ "num-derive",
+ "num-traits",
+ "reqwest",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

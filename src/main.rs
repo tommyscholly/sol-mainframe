@@ -5,15 +5,15 @@ use axum::{
     Json, Router,
 };
 
+use event::Attendance;
 use libsql::Builder;
+use sol_util::mainframe::{Event, EventJsonBody, Profile};
 use toml::Table;
 
-use std::fs;
+use std::{fs, sync::Arc};
 
 mod database;
 mod event;
-mod profile;
-mod rank;
 mod roblox;
 mod util;
 
@@ -26,7 +26,7 @@ struct AppState {
 async fn get_profile(
     State(state): State<AppState>,
     Path(user_id): Path<u64>,
-) -> Json<Option<profile::Profile>> {
+) -> Json<Option<Profile>> {
     println!("Retrieving profile for {user_id}");
     let db = Builder::new_remote(state.url, state.token)
         .build()
@@ -43,7 +43,7 @@ async fn get_profile(
         Err(e) => panic!("{}", e.to_string()),
     };
 
-    let (profile, in_db) = database::get_profile(user_id, sol_rank_id, conn).await;
+    let (profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
     if in_db {
         println!("Retrieved {profile:?}");
         return Json(Some(profile));
@@ -53,10 +53,52 @@ async fn get_profile(
     Json(None)
 }
 
-async fn put_event(
+async fn get_attended(State(state): State<AppState>, Path(user_id): Path<u64>) -> Json<u64> {
+    println!("Counting events attended for {user_id}");
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let count = database::get_attended(user_id, conn).await;
+    println!("{user_id} has attended {count} events");
+    Json(count)
+}
+
+async fn get_events_attended(
     State(state): State<AppState>,
-    Json(body): Json<event::EventJsonBody>,
-) -> StatusCode {
+    Path(user_id): Path<u64>,
+) -> Json<Vec<u64>> {
+    println!("Retrieving event ids for user {user_id}");
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let events = database::get_events_attended(user_id, conn).await;
+    println!("{user_id} has attended {events:?}");
+    Json(events)
+}
+
+async fn get_event_info_by_info(
+    State(state): State<AppState>,
+    Path(event_id): Path<i32>,
+) -> Json<Option<Event>> {
+    println!("Getting event {event_id}");
+    let db = Builder::new_remote(state.url, state.token)
+        .build()
+        .await
+        .unwrap();
+    let conn = db.connect().unwrap();
+
+    let event = database::get_event(event_id, conn).await.unwrap_or(None);
+    println!("Got event {event:?}");
+    Json(event)
+}
+
+async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody>) -> StatusCode {
     println!(
         "Processing event hosted by {} at {}",
         body.host, body.location
@@ -67,7 +109,7 @@ async fn put_event(
         .unwrap();
     let conn = db.connect().unwrap();
 
-    let event = event::Event::from_json_body(body);
+    let event = Event::from_json_body(body);
 
     let attendance_string = serde_json::to_string(&event.attendance).unwrap();
     conn.execute("INSERT INTO events (host, attendance, event_date, kind, location) VALUES (?1, ?2, ?3, ?4, ?5)", (
@@ -78,17 +120,15 @@ async fn put_event(
         event.location.as_str(),
     )).await.unwrap();
 
-    event.log_attendance(conn).await;
+    let conn_arc = Arc::new(conn);
+    event.log_attendance(conn_arc).await;
 
     println!("Logged {event:?}");
     StatusCode::OK
 }
 
 // gets the hosted events from the specified userid
-async fn get_hosted(
-    State(state): State<AppState>,
-    Path(host_id): Path<u64>,
-) -> Json<Vec<event::Event>> {
+async fn get_hosted(State(state): State<AppState>, Path(host_id): Path<u64>) -> Json<Vec<Event>> {
     println!("Retrieving events hosted by {host_id}");
     let db = Builder::new_remote(state.url, state.token)
         .build()
@@ -103,7 +143,7 @@ async fn get_hosted(
 
     let mut events = Vec::new();
     while let Ok(Some(r)) = rows.next().await {
-        events.push(event::Event::from_row(&r))
+        events.push(Event::from_row(&r))
     }
 
     println!("Successfully retrieved events for {host_id}");
@@ -130,6 +170,9 @@ async fn main() {
         .route("/profiles/:id", get(get_profile))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))
+        .route("/events/attended/:id", get(get_events_attended))
+        .route("/events/num-attended/:id", get(get_attended))
+        .route("/events/info/:id", get(get_event_info_by_info))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();

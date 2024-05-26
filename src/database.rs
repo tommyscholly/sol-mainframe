@@ -1,11 +1,12 @@
 use anyhow::Result;
 use libsql::{de, Connection};
+use sol_util::mainframe::{Event, Profile};
 
-use crate::profile::Profile;
+use std::sync::Arc;
 
 // shared db functions
 //
-pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: Connection) -> (Profile, bool) {
+pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: &Connection) -> (Profile, bool) {
     let mut get_profile = db
         .prepare("SELECT * FROM profiles WHERE user_id = ?1")
         .await
@@ -20,7 +21,59 @@ pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: Connection) -> (Pro
     }
 }
 
-pub async fn update_profile(profile: Profile, in_db: bool, db: Connection) -> Result<()> {
+pub async fn get_attended(user_id: u64, db: Connection) -> u64 {
+    let mut response = db
+        .query(
+            r#"SELECT COUNT(*) AS events_attended
+         FROM events, json_each(attendance)
+         WHERE value = ?1
+        "#,
+            [user_id],
+        )
+        .await
+        .unwrap();
+
+    let row = response.next().await.unwrap();
+    match row {
+        Some(r) => r.get::<u64>(0).expect("to be a 0th column"),
+        None => 0,
+    }
+}
+
+pub async fn get_events_attended(user_id: u64, db: Connection) -> Vec<u64> {
+    let mut rows = db
+        .query(
+            r#"SELECT event_id
+         FROM events, json_each(attendance)
+         WHERE value = ?1
+        "#,
+            [user_id],
+        )
+        .await
+        .unwrap();
+
+    let mut events = Vec::new();
+    while let Ok(Some(r)) = rows.next().await {
+        events.push(r.get::<u64>(0).unwrap())
+    }
+
+    events
+}
+
+pub async fn get_event(event_id: i32, db: Connection) -> Result<Option<Event>> {
+    let event_response = db
+        .query("SELECT * FROM events WHERE event_id = ?1", [event_id])
+        .await?
+        .next()
+        .await?;
+
+    Ok(event_response.map(|event_row| {
+        println!("{event_row:?}");
+        Event::from_row(&event_row)
+    }))
+}
+
+pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) -> Result<()> {
     if in_db {
         db.execute(
             r#"UPDATE profiles
