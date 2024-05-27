@@ -48,9 +48,19 @@ async fn get_profile(
         Err(e) => panic!("{}", e.to_string()),
     };
 
-    let (profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
+    let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
     if in_db {
         println!("Retrieved {profile:?}");
+        let mut update = false;
+        if profile.try_update_rank(sol_rank_id) {
+            update = true;
+        }
+        if profile.try_reset_events() {
+            update = true;
+        }
+        if update {
+            let _ = database::update_profile(profile.clone(), in_db, conn.into()).await;
+        }
         Json(Some(profile))
     } else {
         println!("No profile found, creating for {user_id}");
