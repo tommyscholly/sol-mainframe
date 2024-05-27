@@ -7,14 +7,16 @@ use axum::{
 
 use event::Attendance;
 use libsql::{Builder, Connection};
-use sol_util::mainframe::{CreateProfileBody, Event, EventJsonBody, Profile};
+use sol_util::{
+    mainframe::{CreateProfileBody, Event, EventJsonBody, Profile},
+    roblox,
+};
 use toml::Table;
 
 use std::{fs, sync::Arc};
 
 mod database;
 mod event;
-mod roblox;
 mod util;
 
 #[derive(Clone)]
@@ -231,5 +233,6 @@ async fn main() {
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("SOL Mainframe Listening on 0.0.0.0:3000");
     axum::serve(listener, app).await.unwrap();
 }
