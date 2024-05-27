@@ -1929,8 +1929,8 @@ dependencies = [
 
 [[package]]
 name = "sol-util"
-version = "0.1.25"
-source = "git+https://github.com/solar-mechanicus/sol-util.git#2e9d8bff0e0467991908ed765c464dd52bad0f18"
+version = "0.1.26"
+source = "git+https://github.com/solar-mechanicus/sol-util.git#300ee5a3e7f8fc04b58dcf8ef9d37be1b0a50415"
 dependencies = [
  "anyhow",
  "chrono",

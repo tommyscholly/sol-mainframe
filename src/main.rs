@@ -16,6 +16,7 @@ use toml::Table;
 use std::{fs, sync::Arc};
 
 mod database;
+mod discord;
 mod event;
 mod util;
 
@@ -23,6 +24,7 @@ mod util;
 struct AppState {
     token: String,
     url: String,
+    webhook: String,
 }
 
 pub async fn get_db_conn(url: String, token: String) -> anyhow::Result<Connection> {
@@ -178,7 +180,10 @@ async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody
     )).await.unwrap();
 
     let conn_arc = Arc::new(conn);
-    event.log_attendance(conn_arc).await;
+    let _ = tokio::join!(
+        discord::log_event(event.clone(), state.webhook),
+        event.log_attendance(conn_arc)
+    );
 
     println!("Logged {event:?}");
     StatusCode::OK
@@ -210,13 +215,16 @@ async fn main() {
 
     let db_token_string = secrets_table.get("DB_TOKEN").unwrap().to_string();
     let db_url_string = secrets_table.get("DB_URL").unwrap().to_string();
+    let webhook_string = secrets_table.get("EVENT_WEBHOOK").unwrap().to_string();
 
     let db_token = util::strip_token(db_token_string);
     let db_url = util::strip_token(db_url_string);
+    let event_webhook = util::strip_token(webhook_string);
 
     let state = AppState {
         token: db_token,
         url: db_url,
+        webhook: event_webhook,
     };
 
     let app = Router::new()
