@@ -6,8 +6,8 @@ use axum::{
 };
 
 use event::Attendance;
-use libsql::Builder;
-use sol_util::mainframe::{Event, EventJsonBody, Profile};
+use libsql::{Builder, Connection};
+use sol_util::mainframe::{CreateProfileBody, Event, EventJsonBody, Profile};
 use toml::Table;
 
 use std::{fs, sync::Arc};
@@ -23,16 +23,17 @@ struct AppState {
     url: String,
 }
 
+pub async fn get_db_conn(url: String, token: String) -> anyhow::Result<Connection> {
+    let db = Builder::new_remote(url, token).build().await?;
+    Ok(db.connect()?)
+}
+
 async fn get_profile(
     State(state): State<AppState>,
     Path(user_id): Path<u64>,
 ) -> Json<Option<Profile>> {
     println!("Retrieving profile for {user_id}");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
         Ok(None) => {
@@ -55,15 +56,39 @@ async fn get_profile(
     }
 }
 
+async fn create_profile(
+    State(state): State<AppState>,
+    Json(body): Json<CreateProfileBody>,
+) -> StatusCode {
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
+
+    let mut new_profile = Profile::new(body.user_id, body.rank_id);
+    new_profile.events_attended_this_week = body.events;
+    new_profile.total_marks = body.marks;
+    new_profile.marks_at_current_rank = body.marks;
+
+    let _ = database::update_profile(new_profile, false, conn.into()).await;
+
+    println!("Created profile for {}", body.user_id);
+    StatusCode::OK
+}
+
+async fn update_profiles(State(state): State<AppState>) -> StatusCode {
+    tokio::spawn(async move {
+        match database::update_all(state.url, state.token).await {
+            Ok(_) => println!("Updated profiles successfully"),
+            Err(e) => eprintln!("Failed to update profiles with {e}"),
+        }
+    });
+
+    StatusCode::OK
+}
+
 async fn increment_events(
     State(state): State<AppState>,
     Path((user_id, increment)): Path<(u64, i32)>,
 ) -> StatusCode {
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
         Ok(None) => {
@@ -92,11 +117,7 @@ async fn increment_events(
 
 async fn get_attended(State(state): State<AppState>, Path(user_id): Path<u64>) -> Json<u64> {
     println!("Counting events attended for {user_id}");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let count = database::get_attended(user_id, conn).await;
     println!("{user_id} has attended {count} events");
@@ -108,11 +129,7 @@ async fn get_events_attended(
     Path(user_id): Path<u64>,
 ) -> Json<Vec<u64>> {
     println!("Retrieving event ids for user {user_id}");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let events = database::get_events_attended(user_id, conn).await;
     println!("{user_id} has attended {events:?}");
@@ -124,11 +141,7 @@ async fn get_event_info_by_info(
     Path(event_id): Path<i32>,
 ) -> Json<Option<Event>> {
     println!("Getting event {event_id}");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let event = database::get_event(event_id, conn).await.unwrap_or(None);
     println!("Got event {event:?}");
@@ -137,11 +150,7 @@ async fn get_event_info_by_info(
 
 async fn get_promotable(State(state): State<AppState>) -> Json<Vec<u64>> {
     println!("Getting promotable users");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let users = database::get_promotable(conn).await.unwrap_or(Vec::new());
     println!("Promotable users {users:?}");
@@ -153,11 +162,7 @@ async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody
         "Processing event hosted by {} at {}",
         body.host, body.location
     );
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let event = Event::from_json_body(body);
 
@@ -180,11 +185,7 @@ async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody
 // gets the hosted events from the specified userid
 async fn get_hosted(State(state): State<AppState>, Path(host_id): Path<u64>) -> Json<Vec<Event>> {
     println!("Retrieving events hosted by {host_id}");
-    let db = Builder::new_remote(state.url, state.token)
-        .build()
-        .await
-        .unwrap();
-    let conn = db.connect().unwrap();
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
 
     let mut rows = conn
         .query("SELECT * FROM events WHERE host = ?1", [host_id])
@@ -219,6 +220,8 @@ async fn main() {
     let app = Router::new()
         .route("/profiles/:id", get(get_profile))
         .route("/profiles/promotable", get(get_promotable))
+        .route("/profiles/create", post(create_profile))
+        .route("/profiles/update", post(update_profiles))
         .route("/profiles/increment/:id/:inc", post(increment_events))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))

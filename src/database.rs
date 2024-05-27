@@ -1,7 +1,10 @@
 use anyhow::Result;
 use libsql::Connection;
 use sol_util::mainframe::{Event, Profile};
+use sol_util::roblox;
+use tokio::time;
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 // shared db functions
@@ -119,6 +122,12 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
     Ok(())
 }
 
+pub async fn remove_profile(user_id: u64, db: Arc<Connection>) -> Result<()> {
+    db.execute("DELETE FROM profiles WHERE user_id = ?1", [user_id])
+        .await?;
+    Ok(())
+}
+
 pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
     let mut rows = db
         .query(
@@ -141,4 +150,59 @@ pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
     }
 
     Ok(users)
+}
+
+pub async fn update_all(url: String, token: String) -> Result<()> {
+    let db = crate::get_db_conn(url.clone(), token.clone()).await?;
+    let mut rows = db
+        .query(
+            r#"
+        SELECT * FROM profiles"#,
+            (),
+        )
+        .await?;
+
+    let mut users = VecDeque::new();
+    while let Ok(Some(r)) = rows.next().await {
+        let profile = Profile::from_row(&r);
+        users.push_back(profile);
+    }
+
+    drop(db);
+
+    while let Some(mut user) = users.pop_front() {
+        let id_opt = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user.user_id).await {
+            Ok(id_opt) => id_opt,
+            Err(e) => {
+                println!("Got error {e}, waiting 5 seconds");
+                time::sleep(time::Duration::from_secs(5)).await;
+                users.push_back(user);
+                continue;
+            }
+        };
+
+        let db = Arc::new(crate::get_db_conn(url.clone(), token.clone()).await?);
+        match id_opt {
+            Some((id, _)) => {
+                if id != user.rank_id {
+                    // think its safe to reset the marks
+                    let old_rank_id = user.rank_id;
+                    user.try_update_rank(id);
+                    user.try_reset_events();
+                    println!(
+                        "Updating user {}: was {} now {}",
+                        user.user_id, old_rank_id, id
+                    );
+                    update_profile(user, true, db).await?;
+                }
+            }
+            // user isnt in sol anymore, need to remove the profile
+            None => {
+                println!("User {} is no longer in SOL", user.user_id);
+                remove_profile(user.user_id, db).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
