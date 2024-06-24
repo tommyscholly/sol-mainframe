@@ -19,6 +19,7 @@ mod database;
 mod discord;
 mod event;
 mod event_queue;
+mod stats;
 mod util;
 
 #[derive(Clone)]

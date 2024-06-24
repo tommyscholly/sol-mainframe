@@ -152,6 +152,32 @@ pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
     Ok(users)
 }
 
+pub async fn get_top(url: String, token: String, top: i32) -> Result<Vec<(String, i32)>> {
+    let db = crate::get_db_conn(url.clone(), token.clone()).await?;
+    let mut rows = db
+        .query(
+            "SELECT TOP ?1 user_id, username, events_attended_this_week FROM profiles ORDER BY events_attended_this_week DESC",
+            [top],
+        )
+        .await?;
+
+    let mut users = Vec::with_capacity(top as usize);
+    while let Ok(Some(r)) = rows.next().await {
+        let user_id = r.get::<u64>(0).unwrap();
+        let username = match r.get::<Option<String>>(1)? {
+            Some(s) => s,
+            None => {
+                let info = roblox::get_user_info_from_id(user_id).await?;
+                info.name
+            }
+        };
+        let events = r.get::<i32>(2).unwrap();
+        users.push((username, events))
+    }
+
+    Ok(users)
+}
+
 pub async fn update_all(url: String, token: String) -> Result<()> {
     let db = crate::get_db_conn(url.clone(), token.clone()).await?;
     let mut rows = db
