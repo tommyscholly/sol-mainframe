@@ -91,7 +91,7 @@ pub async fn add_event(
     #[description = "User to add an event to"] name: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let user_ids = roblox::get_user_ids_from_usernames(vec![name.clone()]).await?;
+    let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
     let user_id = if let Some(Some(id)) = user_ids.get(&name) {
         *id
     } else {
@@ -228,7 +228,7 @@ pub async fn career(
     ctx.defer().await?;
     let roblox_user_id = match username {
         Some(ref name) => {
-            let user_ids = roblox::get_user_ids_from_usernames(vec![name.clone()]).await?;
+            let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
             if let Some(Some(id)) = user_ids.get(name) {
                 *id
             } else {
@@ -258,33 +258,26 @@ pub async fn career(
     let (
         user_profile_result,
         num_events_result,
-        user_info_result,
+        // user_info_result,
         headshot_result,
         division_tags_result,
-        rank_result,
+        // rank_result,
     ) = tokio::join!(
         sol_util::mainframe::get_profile(roblox_user_id),
         sol_util::mainframe::get_num_attendance(roblox_user_id),
-        roblox::get_user_info_from_id(roblox_user_id),
+        // roblox::get_user_info_from_id(roblox_user_id),
         roblox::get_headshot_url(roblox_user_id),
         get_division_tags(roblox_user_id),
-        roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id)
+        // roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id)
     );
 
-    let (sol_rank_id, _) = match rank_result? {
-        Some((id, rank_name)) => (id, rank_name),
-        None => {
-            ctx.say("User is not in SOL.").await?;
-            return Ok(());
-        }
-    };
-    let rank = match Rank::from_rank_id(sol_rank_id) {
-        Some(r) => r,
-        None => {
-            ctx.say("User is not in SOL.").await?;
-            return Ok(());
-        }
-    };
+    // let (sol_rank_id, _) = match rank_result? {
+    //     Some((id, rank_name)) => (id, rank_name),
+    //     None => {
+    //         ctx.say("User is not in SOL.").await?;
+    //         return Ok(());
+    //     }
+    // };
 
     let user_profile = match user_profile_result {
         Ok(p) => p,
@@ -298,7 +291,16 @@ pub async fn career(
             return Ok(());
         }
     };
-    let user_info = user_info_result?;
+
+    let rank = match Rank::from_rank_id(user_profile.rank_id) {
+        Some(r) => r,
+        None => {
+            ctx.say("User is not in SOL.").await?;
+            return Ok(());
+        }
+    };
+
+    // let user_info = user_info_result?;
     let num_events = num_events_result?;
     let headshot_url = match headshot_result {
         Ok(url) => url,
@@ -313,9 +315,12 @@ pub async fn career(
 
     let marks = user_profile.total_marks;
     let rank_marks = user_profile.marks_at_current_rank;
+    let username = user_profile
+        .username
+        .unwrap_or(format!("User {}", user_profile.user_id));
 
     let embed = CreateEmbed::new()
-        .title(format!("{}{} {}", divison_tags, rank, user_info.name))
+        .title(format!("{}{} {}", divison_tags, rank, username))
         .field(
             "Total Events Attended",
             format!("{num_events} Events"),
@@ -390,7 +395,7 @@ pub async fn career(
                     let events_vec =
                         sol_util::mainframe::get_events_attended(roblox_user_id).await?;
                     let embed = CreateEmbed::new()
-                        .title(format!("{}'s attended events", user_info.name))
+                        .title(format!("{}'s attended events", username))
                         .footer(make_footer())
                         .color(0x800000);
 
