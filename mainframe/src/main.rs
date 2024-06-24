@@ -48,14 +48,15 @@ async fn get_profile(
             return Json(None);
         }
         Ok(Some((id, _))) => id,
-        Err(e) => panic!("{}", e.to_string()),
+        // this error is probably a timeout, we can normally ignore it
+        Err(_e) => 999,
     };
 
     let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
     if in_db {
         println!("Retrieved {profile:?}");
         let mut update = false;
-        if profile.try_update_rank(sol_rank_id) {
+        if sol_rank_id != 999 && profile.try_update_rank(sol_rank_id) {
             update = true;
         }
         if profile.try_reset_events() {
@@ -113,12 +114,14 @@ async fn increment_events(
             return StatusCode::NOT_FOUND;
         }
         Ok(Some((id, _))) => id,
-        Err(e) => panic!("{}", e.to_string()),
+        Err(_e) => 999,
     };
     let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
 
     profile.try_reset_events();
-    profile.try_update_rank(sol_rank_id);
+    if sol_rank_id != 999 {
+        profile.try_update_rank(sol_rank_id);
+    }
 
     profile.events_attended_this_week += increment;
 
