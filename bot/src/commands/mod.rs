@@ -301,15 +301,9 @@ pub async fn career(
     };
 
     // let user_info = user_info_result?;
-    let num_events = num_events_result?;
-    let headshot_url = match headshot_result {
-        Ok(url) => url,
-        Err(_) => "".to_string(),
-    };
-    let divison_tags = match division_tags_result {
-        Ok(tags) => tags,
-        Err(_) => "".to_string(),
-    };
+    let num_events = num_events_result.unwrap_or(0);
+    let headshot_url = headshot_result.unwrap_or("".to_string());
+    let divison_tags = division_tags_result.unwrap_or("".to_string());
 
     let next_rank = rank.next();
 
