@@ -20,9 +20,7 @@ impl Attendance for Event {
             let db_ref = db.clone();
             tokio::spawn(async move {
                 let sol_rank_id = match roblox::get_rank_in_group(SOL_GROUP_ID, user_id).await {
-                    Ok(None) => {
-                        return;
-                    }
+                    Ok(None) => 1,
                     Ok(Some((id, _))) => id,
                     Err(e) => panic!("{}", e.to_string()),
                 };

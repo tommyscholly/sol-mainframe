@@ -5,19 +5,20 @@ use axum::{
     Json, Router,
 };
 
-use event::Attendance;
 use libsql::{Builder, Connection};
 use sol_util::{
     mainframe::{CreateProfileBody, Event, EventJsonBody, Profile},
     roblox,
 };
+use tokio::sync::Mutex;
 use toml::Table;
 
-use std::{fs, sync::Arc};
+use std::{fs, future::IntoFuture, sync::Arc};
 
 mod database;
 mod discord;
 mod event;
+mod event_queue;
 mod util;
 
 #[derive(Clone)]
@@ -26,6 +27,7 @@ struct AppState {
     url: String,
     webhook: String,      // for admin server
     main_webhook: String, // for main group
+    event_queue: Arc<Mutex<event_queue::EventQueue>>,
 }
 
 pub async fn get_db_conn(url: String, token: String) -> anyhow::Result<Connection> {
@@ -177,27 +179,15 @@ async fn put_event(State(state): State<AppState>, Json(body): Json<EventJsonBody
         "Processing event hosted by {} at {}",
         body.host, body.location
     );
-    let conn = get_db_conn(state.url, state.token).await.unwrap();
-
-    let event = Event::from_json_body(body);
-
-    let attendance_string = serde_json::to_string(&event.attendance).unwrap();
-    conn.execute("INSERT INTO events (host, attendance, event_date, kind, location) VALUES (?1, ?2, ?3, ?4, ?5)", (
-        event.host,
-        attendance_string,
-        event.event_date.to_rfc3339(),
-        event.kind.as_str(),
-        event.location.as_str(),
-    )).await.unwrap();
-
-    let conn_arc = Arc::new(conn);
+    let mut event_queue = state.event_queue.lock().await;
     let _ = tokio::join!(
-        discord::log_event(event.clone(), state.webhook),
-        discord::log_event(event.clone(), state.main_webhook),
-        event.log_attendance(conn_arc)
+        discord::log_event(body.clone(), state.webhook, &body.names),
+        discord::log_event(body.clone(), state.main_webhook, &body.names),
     );
 
-    println!("Logged {event:?}");
+    println!("Placed event in queue {body:?}");
+    event_queue.push(body);
+
     StatusCode::OK
 }
 
@@ -235,11 +225,13 @@ async fn main() {
     let event_webhook = util::strip_token(webhook_string);
     let main_event_webhook = util::strip_token(main_webhook_string);
 
+    let event_queue = Arc::new(Mutex::new(event_queue::EventQueue::new()));
     let state = AppState {
-        token: db_token,
-        url: db_url,
+        token: db_token.clone(),
+        url: db_url.clone(),
         webhook: event_webhook,
         main_webhook: main_event_webhook,
+        event_queue: event_queue.clone(),
     };
 
     let app = Router::new()
@@ -256,6 +248,10 @@ async fn main() {
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let event_loop = event_queue::queue_loop(event_queue, db_url, db_token);
     println!("SOL Mainframe Listening on 0.0.0.0:3000");
-    axum::serve(listener, app).await.unwrap();
+    let _ = tokio::join!(
+        axum::serve(listener, app).into_future(),
+        event_loop.into_future()
+    );
 }

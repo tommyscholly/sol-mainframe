@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Duration, Utc, Weekday};
+use chrono::{DateTime, Datelike, Utc, Weekday};
 use libsql::Row;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    rank::{self, Rank},
-    roblox,
-};
+use crate::rank::{self, Rank};
 
 const MAINFRAME_URL: &str = "http://localhost:3000";
 
@@ -24,14 +21,14 @@ pub struct Event {
 }
 
 impl Event {
-    pub fn from_json_body(body: EventJsonBody) -> Self {
+    pub fn new(host: u64, attendance: Vec<u64>, location: String, kind: String) -> Self {
         let event_date: DateTime<Utc> = Utc::now();
         Self {
-            host: body.host,
-            attendance: body.attendance,
+            host,
+            attendance,
             event_date,
-            location: body.location,
-            kind: body.kind,
+            location,
+            kind,
             metadata: None,
         }
     }
@@ -61,7 +58,8 @@ impl Event {
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct EventJsonBody {
     pub host: u64,
-    pub attendance: Vec<u64>, // List of userids that attended the event, including the host
+    // pub attendance: Vec<u64>, // List of userids that attended the event, including the host
+    pub names: Vec<String>,
     pub location: String,
     pub kind: String,
     pub metadata: Option<HashMap<String, HashMap<String, String>>>,
@@ -232,17 +230,9 @@ pub async fn log_event(
     location: String,
     kind: String,
 ) -> Result<()> {
-    println!("{attendees:?}");
-    let attendees_map = roblox::get_user_ids_from_usernames(attendees).await?;
-    println!("{attendees_map:?}");
-    let attendance = attendees_map
-        .into_iter()
-        .filter_map(|(_, id_opt)| id_opt)
-        .collect::<Vec<u64>>();
-
     let body = EventJsonBody {
         host,
-        attendance,
+        names: attendees,
         location,
         kind,
         metadata: None,
@@ -318,6 +308,7 @@ pub async fn get_promotable() -> Result<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Duration;
 
     #[test]
     fn test_date_rollover() {

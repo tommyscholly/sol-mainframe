@@ -76,10 +76,10 @@ struct UserIdFromUsernamePayload {
 }
 
 pub async fn get_user_ids_from_usernames(
-    usernames: Vec<String>,
+    usernames: &[String],
 ) -> Result<HashMap<String, Option<u64>>, reqwest::Error> {
     let payload = UserIdFromUsernamePayload {
-        usernames: usernames.clone(),
+        usernames: usernames.to_vec(),
         exclude_banned_users: true,
     };
 
