@@ -77,7 +77,7 @@ async fn create_profile(
 ) -> StatusCode {
     let conn = get_db_conn(state.url, state.token).await.unwrap();
 
-    let mut new_profile = Profile::new(body.user_id, body.rank_id);
+    let mut new_profile = Profile::new(body.user_id, Some(body.username), body.rank_id);
     new_profile.events_attended_this_week = body.events;
     new_profile.total_marks = body.marks;
     new_profile.marks_at_current_rank = body.marks;

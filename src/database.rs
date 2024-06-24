@@ -20,7 +20,7 @@ pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: &Connection) -> (Pr
         Ok(profile_row) => (Profile::from_row(&profile_row), true),
         // errors if no row is returned, which means there is no profile in the db
         // (probably)
-        Err(_) => (Profile::new(user_id, sol_rank_id), false),
+        Err(_) => (Profile::new(user_id, None, sol_rank_id), false),
     }
 }
 
