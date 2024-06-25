@@ -42,6 +42,11 @@ const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
 async fn verify_api_key(request: Request, next: Next) -> Response {
     let err_response = Response::builder().status(400).body(Body::empty()).unwrap();
 
+    let uri = request.uri();
+    if uri.path() == "/" {
+        return next.run(request).await;
+    }
+
     let headers = request.headers();
     if let Some(key) = headers.get("api-key") {
         if key.to_str().unwrap() != API_KEY {
@@ -269,6 +274,10 @@ async fn get_hosted(State(state): State<AppState>, Path(host_id): Path<u64>) -> 
     Json(events)
 }
 
+async fn default() -> String {
+    "hello!".to_string()
+}
+
 #[tokio::main]
 async fn main() {
     let secrets = fs::read_to_string("Secrets.toml").expect("Secrets.toml does not exist");
@@ -312,6 +321,7 @@ async fn main() {
         .route("/events/info/:id", get(get_event_info_by_info))
         .route("/cosmetics/:id", get(get_cosmetics))
         .route("/cosmetics", post(update_cosmetics))
+        .route("/", get(default))
         .layer(from_fn(verify_api_key))
         .with_state(state);
 
