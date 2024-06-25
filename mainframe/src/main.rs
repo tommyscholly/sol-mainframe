@@ -1,10 +1,14 @@
 use axum::{
-    extract::{Path, State},
+    body::Body,
+    extract::{Path, Request, State},
     http::StatusCode,
+    middleware::{from_fn, Next},
+    response::Response,
     routing::{get, post, put},
     Json, Router,
 };
 
+use cosmetics::CosmeticUserInfo;
 use libsql::{Builder, Connection};
 use sol_util::{
     mainframe::{CreateProfileBody, Event, EventJsonBody, Profile},
@@ -15,6 +19,7 @@ use toml::Table;
 
 use std::{fs, future::IntoFuture, sync::Arc};
 
+mod cosmetics;
 mod database;
 mod discord;
 mod event;
@@ -26,14 +31,62 @@ mod util;
 struct AppState {
     token: String,
     url: String,
+    cosmetics_url: String,
+    cosmetics_token: String,
     webhook: String,      // for admin server
     main_webhook: String, // for main group
     event_queue: Arc<Mutex<event_queue::EventQueue>>,
 }
 
+const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
+async fn verify_api_key(request: Request, next: Next) -> Response {
+    let err_response = Response::builder().status(400).body(Body::empty()).unwrap();
+
+    let headers = request.headers();
+    if let Some(key) = headers.get("api-key") {
+        if key.to_str().unwrap() != API_KEY {
+            return err_response;
+        }
+    } else {
+        return err_response;
+    }
+
+    next.run(request).await
+}
+
 pub async fn get_db_conn(url: String, token: String) -> anyhow::Result<Connection> {
     let db = Builder::new_remote(url, token).build().await?;
     Ok(db.connect()?)
+}
+
+async fn get_cosmetics(
+    State(state): State<AppState>,
+    Path(user_id): Path<u64>,
+) -> Json<CosmeticUserInfo> {
+    let conn = get_db_conn(state.cosmetics_url, state.cosmetics_token)
+        .await
+        .unwrap();
+
+    let cosmetic_info = cosmetics::get_cosmetics(user_id, conn)
+        .await
+        .unwrap_or(CosmeticUserInfo::new(user_id));
+
+    Json(cosmetic_info)
+}
+
+async fn update_cosmetics(
+    State(state): State<AppState>,
+    Json(cosmetics): Json<cosmetics::CosmeticUserInfo>,
+) -> StatusCode {
+    let conn = get_db_conn(state.cosmetics_url, state.cosmetics_token)
+        .await
+        .unwrap();
+
+    if cosmetics::update_cosmetics(cosmetics, conn).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    StatusCode::OK
 }
 
 async fn get_profile(
@@ -221,11 +274,15 @@ async fn main() {
 
     let db_token_string = secrets_table.get("DB_TOKEN").unwrap().to_string();
     let db_url_string = secrets_table.get("DB_URL").unwrap().to_string();
+    let cos_db_token_string = secrets_table.get("COS_DB_TOKEN").unwrap().to_string();
+    let cos_db_url_string = secrets_table.get("COS_DB_URL").unwrap().to_string();
     let webhook_string = secrets_table.get("EVENT_WEBHOOK").unwrap().to_string();
     let main_webhook_string = secrets_table.get("MAIN_EVENT_WEBHOOK").unwrap().to_string();
 
     let db_token = util::strip_token(db_token_string);
     let db_url = util::strip_token(db_url_string);
+    let cos_db_token = util::strip_token(cos_db_token_string);
+    let cos_db_url = util::strip_token(cos_db_url_string);
     let event_webhook = util::strip_token(webhook_string);
     let main_event_webhook = util::strip_token(main_webhook_string);
 
@@ -233,6 +290,8 @@ async fn main() {
     let state = AppState {
         token: db_token.clone(),
         url: db_url.clone(),
+        cosmetics_token: cos_db_token,
+        cosmetics_url: cos_db_url,
         webhook: event_webhook,
         main_webhook: main_event_webhook,
         event_queue: event_queue.clone(),
@@ -249,6 +308,9 @@ async fn main() {
         .route("/events/attended/:id", get(get_events_attended))
         .route("/events/num-attended/:id", get(get_attended))
         .route("/events/info/:id", get(get_event_info_by_info))
+        .route("/cosmetics/:id", get(get_cosmetics))
+        .route("/cosmetics", post(update_cosmetics))
+        .layer(from_fn(verify_api_key))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();

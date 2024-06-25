@@ -159,7 +159,7 @@ pub async fn get_top(url: String, token: String, top: i32) -> Result<Vec<(String
     let db = crate::get_db_conn(url.clone(), token.clone()).await?;
     let mut rows = db
         .query(
-            "SELECT TOP ?1 user_id, username, events_attended_this_week FROM profiles ORDER BY events_attended_this_week DESC",
+            "SELECT user_id, username, events_attended_this_week FROM profiles ORDER BY events_attended_this_week DESC LIMIT ?1",
             [top],
         )
         .await?;

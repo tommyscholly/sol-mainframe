@@ -120,7 +120,6 @@ pub fn queue_loop(
                 println!("Popped queue event {event:?}");
                 let processed = process_event(event).await;
                 write_to_db(processed, db_url.clone(), db_token.clone()).await;
-            } else {
             }
         }
     })
