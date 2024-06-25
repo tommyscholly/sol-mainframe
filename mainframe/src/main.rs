@@ -63,6 +63,7 @@ async fn get_cosmetics(
     State(state): State<AppState>,
     Path(user_id): Path<u64>,
 ) -> Json<CosmeticUserInfo> {
+    println!("getting cosmetics for {user_id}");
     let conn = get_db_conn(state.cosmetics_url, state.cosmetics_token)
         .await
         .unwrap();
@@ -71,6 +72,7 @@ async fn get_cosmetics(
         .await
         .unwrap_or(CosmeticUserInfo::new(user_id));
 
+    println!("got cosmetics {cosmetic_info:?}");
     Json(cosmetic_info)
 }
 
