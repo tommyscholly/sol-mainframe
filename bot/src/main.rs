@@ -1,7 +1,7 @@
 mod commands;
 mod rowifi;
 
-use poise::serenity_prelude::{self as serenity, ActivityData, GuildId};
+use poise::serenity_prelude::{self as serenity, ActivityData, CacheHttp, GuildId};
 use toml::Table;
 
 use std::fs::read_to_string;
@@ -67,8 +67,6 @@ async fn main() {
                     Some(ActivityData::watching("Luetin09")),
                     serenity::OnlineStatus::DoNotDisturb,
                 );
-                let guild_id = GuildId::new(700090648170070056);
-                guild_id.mem
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data { rowifi_token })
             })
