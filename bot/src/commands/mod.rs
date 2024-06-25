@@ -193,7 +193,7 @@ pub async fn log_event(ctx: AppContext<'_>) -> Result<(), Error> {
         let attendees = form
             .usernames
             .split(',')
-            .map(|s| s.to_string())
+            .map(|s| s.trim().to_string())
             .collect::<Vec<String>>();
 
         mainframe::log_event(
