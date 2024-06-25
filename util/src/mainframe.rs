@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::rank::{self, Rank};
 
 const MAINFRAME_URL: &str = "http://localhost:3000";
+const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct Event {
@@ -184,6 +185,7 @@ pub async fn get_profile(user_id: u64) -> Result<Profile> {
     let client = Client::new();
     let response = client
         .get(format!("{MAINFRAME_URL}/profiles/{user_id}"))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -196,6 +198,7 @@ pub async fn get_num_attendance(user_id: u64) -> Result<u64> {
     let client = Client::new();
     let response = client
         .get(format!("{MAINFRAME_URL}/events/num-attended/{user_id}"))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -208,6 +211,7 @@ pub async fn get_events_attended(user_id: u64) -> Result<Vec<u64>> {
     let client = Client::new();
     let response = client
         .get(format!("{MAINFRAME_URL}/events/attended/{user_id}"))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -220,6 +224,7 @@ pub async fn get_event(event_id: u64) -> Result<Event> {
     let client = Client::new();
     let response = client
         .get(format!("{MAINFRAME_URL}/events/info/{event_id}"))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -249,6 +254,7 @@ pub async fn log_event(
     client
         .put(format!("{MAINFRAME_URL}/events"))
         .json(&body)
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -261,6 +267,7 @@ pub async fn increment_events(user_id: u64, increment: i32) -> Result<()> {
         .post(format!(
             "{MAINFRAME_URL}/profiles/increment/{user_id}/{increment}"
         ))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
@@ -294,6 +301,7 @@ pub async fn create_profile(
     let _ = client
         .post(format!("{MAINFRAME_URL}/profiles/create"))
         .json(&body)
+        .header("api-key", API_KEY)
         .send()
         .await?;
     Ok(())
@@ -303,6 +311,7 @@ pub async fn get_promotable() -> Result<Vec<u64>> {
     let client = Client::new();
     let response = client
         .get(format!("{MAINFRAME_URL}/profiles/promotable"))
+        .header("api-key", API_KEY)
         .send()
         .await?;
 
