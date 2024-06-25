@@ -85,8 +85,9 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                 total_marks = ?2,
                 marks_at_current_rank = ?3,
                 events_attended_this_week = ?4,
-                last_event_attended_date = ?5
-            WHERE user_id = ?6
+                last_event_attended_date = ?5,
+                username = ?6
+            WHERE user_id = ?7
             "#,
             (
                 profile.rank_id,
@@ -98,13 +99,14 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                     None => serde_json::to_string(&profile.last_event_attended_date).unwrap(),
                 },
                 profile.user_id,
+                profile.username,
             ),
         )
         .await?;
     } else {
         db.execute(r#"
-        INSERT INTO profiles (user_id, rank_id, total_marks, marks_at_current_rank, events_attended_this_week, last_event_attended_date)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+        INSERT INTO profiles (user_id, rank_id, total_marks, marks_at_current_rank, events_attended_this_week, last_event_attended_date, username)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
             (
                 profile.user_id,
                 profile.rank_id,
@@ -114,7 +116,8 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                 match profile.last_event_attended_date {
                     Some(d) => d.to_rfc3339(),
                     None => serde_json::to_string(&profile.last_event_attended_date).unwrap()
-                }
+                },
+                profile.username
             ))
             .await?;
     }

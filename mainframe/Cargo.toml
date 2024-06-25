@@ -11,7 +11,7 @@ axum = "0.7.5"
 byteorder = "1.5.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 futures = "0.3.30"
-libsql = { version = "0.3.5", default-features = true }
+libsql = { version = "0.4.0", default-features = true }
 num-derive = "0.4.2"
 num-traits = "0.2.19"
 rayon = "1.10.0"

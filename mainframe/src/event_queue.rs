@@ -117,10 +117,10 @@ pub fn queue_loop(
 
             if let Some(event) = q.pop() {
                 drop(q); // we drop the lock, otherwise everything might halt
+                println!("Popped queue event {event:?}");
                 let processed = process_event(event).await;
                 write_to_db(processed, db_url.clone(), db_token.clone()).await;
             } else {
-                println!("nothing in q");
             }
         }
     })

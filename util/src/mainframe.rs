@@ -106,9 +106,13 @@ impl Profile {
     }
     pub fn from_row(row: &Row) -> Self {
         let user_id = row.get::<u64>(0).unwrap();
-        let username = row.get::<Option<String>>(1).unwrap();
-        let rank_id = row.get::<u64>(2).unwrap();
-        let event_date_string = row.get::<String>(3).unwrap();
+        // let username = if username_or_null_string == "null" {
+        //     None
+        // } else {
+        //     Some(username_or_null_string)
+        // };
+        let rank_id = row.get::<u64>(1).unwrap();
+        let event_date_string = row.get::<String>(2).unwrap();
         let event_date_opt_string = if event_date_string == "null" {
             None
         } else {
@@ -116,9 +120,10 @@ impl Profile {
         };
         let last_event_attended_date = event_date_opt_string
             .map(|s| chrono::DateTime::parse_from_rfc3339(&s).unwrap().to_utc());
-        let total_marks = row.get::<i32>(4).unwrap();
-        let marks_at_current_rank = row.get::<i32>(5).unwrap();
-        let events_attended_this_week = row.get::<i32>(6).unwrap();
+        let total_marks = row.get::<i32>(3).unwrap();
+        let marks_at_current_rank = row.get::<i32>(4).unwrap();
+        let events_attended_this_week = row.get::<i32>(5).unwrap();
+        let username = row.get::<Option<String>>(6).unwrap();
 
         Self {
             user_id,
