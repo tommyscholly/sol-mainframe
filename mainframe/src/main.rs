@@ -35,6 +35,7 @@ struct AppState {
     cosmetics_token: String,
     webhook: String,      // for admin server
     main_webhook: String, // for main group
+    lb_webhook: String,
     event_queue: Arc<Mutex<event_queue::EventQueue>>,
 }
 
@@ -121,6 +122,9 @@ async fn get_profile(
             update = true;
         }
         if profile.try_reset_events() {
+            update = true;
+        }
+        if profile.try_update_username().await {
             update = true;
         }
         if update {
@@ -274,6 +278,17 @@ async fn get_hosted(State(state): State<AppState>, Path(host_id): Path<u64>) -> 
     Json(events)
 }
 
+async fn lb(State(state): State<AppState>) -> StatusCode {
+    println!("updating lb");
+    match stats::weekly_activity_lb(state.lb_webhook, state.url, state.token).await {
+        Ok(_) => StatusCode::OK,
+        Err(e) => {
+            println!("{e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
 async fn default() -> String {
     "hello!".to_string()
 }
@@ -289,6 +304,7 @@ async fn main() {
     let cos_db_url_string = secrets_table.get("COS_DB_URL").unwrap().to_string();
     let webhook_string = secrets_table.get("EVENT_WEBHOOK").unwrap().to_string();
     let main_webhook_string = secrets_table.get("MAIN_EVENT_WEBHOOK").unwrap().to_string();
+    let lb_webhook_string = secrets_table.get("LB_WEBHOOK").unwrap().to_string();
 
     let db_token = util::strip_token(db_token_string);
     let db_url = util::strip_token(db_url_string);
@@ -296,6 +312,7 @@ async fn main() {
     let cos_db_url = util::strip_token(cos_db_url_string);
     let event_webhook = util::strip_token(webhook_string);
     let main_event_webhook = util::strip_token(main_webhook_string);
+    let lb_event_webhook = util::strip_token(lb_webhook_string);
 
     let event_queue = Arc::new(Mutex::new(event_queue::EventQueue::new()));
     let state = AppState {
@@ -305,6 +322,7 @@ async fn main() {
         cosmetics_url: cos_db_url,
         webhook: event_webhook,
         main_webhook: main_event_webhook,
+        lb_webhook: lb_event_webhook,
         event_queue: event_queue.clone(),
     };
 
@@ -321,6 +339,7 @@ async fn main() {
         .route("/events/info/:id", get(get_event_info_by_info))
         .route("/cosmetics/:id", get(get_cosmetics))
         .route("/cosmetics", post(update_cosmetics))
+        .route("/lb", post(lb))
         .route("/", get(default))
         .layer(from_fn(verify_api_key))
         .with_state(state);

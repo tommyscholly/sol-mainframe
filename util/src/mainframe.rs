@@ -6,7 +6,10 @@ use libsql::Row;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::rank::{self, Rank};
+use crate::{
+    rank::{self, Rank},
+    roblox,
+};
 
 const MAINFRAME_URL: &str = "http://localhost:3000";
 const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
@@ -152,6 +155,28 @@ impl Profile {
             self.marks_at_current_rank += 1;
 
             return true;
+        }
+
+        false
+    }
+
+    pub async fn try_update_username(&mut self) -> bool {
+        let user_info = match roblox::get_user_info_from_id(self.user_id).await {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        match &self.username {
+            Some(name) => {
+                if *name != user_info.name {
+                    self.username = Some(user_info.name);
+                    return true;
+                }
+            }
+            None => {
+                self.username = Some(user_info.name);
+                return true;
+            }
         }
 
         false

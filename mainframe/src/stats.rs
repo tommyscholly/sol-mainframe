@@ -3,30 +3,23 @@
 use crate::{database, discord};
 use anyhow::Result;
 use chrono::Utc;
-use serde::Serialize;
-use serde_json::to_string;
 
-#[derive(Serialize)]
-struct Embed {
-    description: String,
-    color: String,
-    footer: String,
-}
-
-pub async fn weekly_activity_lb(url: String, token: String, webhook: String) -> Result<()> {
+pub async fn weekly_activity_lb(webhook: String, url: String, token: String) -> Result<()> {
     let top_10_names = database::get_top(url, token, 10).await?;
+    println!("got top {top_10_names:?}");
 
     let description = top_10_names
         .iter()
-        .map(|(name, events)| format!("[{}] - {}", events, name))
+        .map(|(name, events)| format!("[**{}**] - {}", events, name))
         .collect::<Vec<String>>()
         .join("\n");
 
-    let embed = Embed {
+    let embed = discord::Embed {
+        title: "This weeks top 10 events attended".to_string(),
         description,
-        color: "2247400".to_string(),
-        footer: Utc::now().to_rfc3339(),
+        color: 0xaa0000,
+        timestamp: Utc::now().to_rfc3339(),
     };
 
-    discord::activity_lb(webhook, to_string(&embed)?).await
+    discord::activity_lb(webhook, embed).await
 }

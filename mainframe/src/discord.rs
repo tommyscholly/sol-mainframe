@@ -1,13 +1,21 @@
 use anyhow::Result;
 use chrono::Utc;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sol_util::mainframe::EventJsonBody;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
+pub struct Embed {
+    pub title: String,
+    pub description: String,
+    pub color: u64,
+    pub timestamp: String,
+}
+
+#[derive(Serialize)]
 struct WebhookBody {
     content: String,
-    embeds: Vec<String>,
+    embeds: Vec<Embed>,
 }
 
 pub async fn log_event(event: EventJsonBody, webhook: String, names: &[String]) -> Result<()> {
@@ -24,20 +32,23 @@ pub async fn log_event(event: EventJsonBody, webhook: String, names: &[String]) 
     );
     let body = WebhookBody {
         content,
-        embeds: vec![],
+        embeds: Vec::new(),
     };
     let _ = client.post(webhook).json(&body).send().await?;
     Ok(())
 }
 
-pub async fn activity_lb(webhook: String, embed: String) -> Result<()> {
+pub async fn activity_lb(webhook: String, embed: Embed) -> Result<()> {
     let client = Client::new();
 
     let body = WebhookBody {
-        content: "Events Top 10".to_string(),
+        content: "".to_string(),
         embeds: vec![embed],
     };
 
-    let _ = client.post(webhook).json(&body).send().await?;
+    let res = client.post(webhook).json(&body).send().await?;
+    if !res.status().is_success() {
+        println!("{} : {}", res.status(), res.text().await.unwrap());
+    }
     Ok(())
 }

@@ -54,6 +54,22 @@ struct EventInputForm {
     kind: String,
 }
 
+// #[command(slash_command)]
+// pub async fn test(ctx: Context<'_>) -> Result<(), Error> {
+//     let member = ctx.author_member().await;
+//     if let Some(m) = member {
+//         if &m.user.id.to_string() == "81379701913812992" {
+//             println!("assigning role");
+//             m.add_role(ctx.http(), 804114011431239723).await?;
+//             ctx.reply("done!").await?;
+//             return Ok(());
+//         }
+//     }
+//
+//     ctx.reply("not tomspell!").await?;
+//     Ok(())
+// }
+
 /// Get event command
 #[command(slash_command)]
 pub async fn event_info(

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::{DateTime, Datelike, Duration, NaiveDateTime, NaiveTime, Utc};
 use libsql::Connection;
 use sol_util::mainframe::{Event, Profile};
 use sol_util::roblox;
@@ -155,12 +156,35 @@ pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
     Ok(users)
 }
 
-pub async fn get_top(url: String, token: String, top: i32) -> Result<Vec<(String, i32)>> {
+fn get_monday() -> DateTime<Utc> {
+    let now = Utc::now().naive_utc();
+    let current_weekday = now.weekday().num_days_from_monday();
+
+    // Calculate the number of days to subtract to get to the most recent Monday
+    let days_to_monday = Duration::days(current_weekday.into());
+
+    // Subtract the days to get this week's Monday
+    let this_weeks_monday_date = now.date() - days_to_monday;
+
+    // Set the time to midnight
+    let ndt = NaiveDateTime::new(
+        this_weeks_monday_date,
+        NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+    );
+    ndt.and_local_timezone(Utc).unwrap()
+}
+
+pub async fn get_top(url: String, token: String, top: u64) -> Result<Vec<(String, i32)>> {
+    let dt = get_monday();
     let db = crate::get_db_conn(url.clone(), token.clone()).await?;
     let mut rows = db
         .query(
-            "SELECT user_id, username, events_attended_this_week FROM profiles ORDER BY events_attended_this_week DESC LIMIT ?1",
-            [top],
+            r#"SELECT user_id, username, events_attended_this_week
+            FROM profiles
+            WHERE datetime(last_event_attended_date) >= datetime(?2)
+            ORDER BY events_attended_this_week DESC
+            LIMIT ?1"#,
+            (top, dt.to_rfc3339()),
         )
         .await?;
 

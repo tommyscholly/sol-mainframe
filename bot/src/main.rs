@@ -1,7 +1,7 @@
 mod commands;
 mod rowifi;
 
-use poise::serenity_prelude::{self as serenity, ActivityData, CacheHttp, GuildId};
+use poise::serenity_prelude::{self as serenity, ActivityData};
 use toml::Table;
 
 use std::fs::read_to_string;
