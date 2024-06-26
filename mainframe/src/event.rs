@@ -18,28 +18,28 @@ impl Attendance for Event {
         for user_id in attendance {
             let event_date = self.event_date;
             let db_ref = db.clone();
-            tokio::spawn(async move {
-                let sol_rank_id = match roblox::get_rank_in_group(SOL_GROUP_ID, user_id).await {
-                    Ok(None) => 1,
-                    Ok(Some((id, _))) => id,
-                    Err(e) => panic!("{}", e.to_string()),
-                };
+            let sol_rank_id = match roblox::get_rank_in_group(SOL_GROUP_ID, user_id).await {
+                Ok(None) => 1,
+                Ok(Some((id, _))) => id,
+                Err(_) => 0,
+            };
 
-                let (mut profile, in_db) =
-                    database::get_profile(user_id, sol_rank_id, &db_ref).await;
+            let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &db_ref).await;
 
-                profile.try_reset_events();
+            profile.try_reset_events();
+            if sol_rank_id != 0 {
                 profile.try_update_rank(sol_rank_id);
+            }
+            profile.try_update_username().await;
 
-                profile.last_event_attended_date = Some(event_date);
-                profile.events_attended_this_week += 1;
+            profile.last_event_attended_date = Some(event_date);
+            profile.events_attended_this_week += 1;
 
-                profile.try_award_mark();
+            profile.try_award_mark();
 
-                if let Err(e) = database::update_profile(profile, in_db, db_ref).await {
-                    eprintln!("Failed to update profile {}, with error {}", user_id, e);
-                }
-            });
+            if let Err(e) = database::update_profile(profile, in_db, db_ref).await {
+                eprintln!("Failed to update profile {}, with error {}", user_id, e);
+            }
         }
     }
 }

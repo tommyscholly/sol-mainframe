@@ -99,8 +99,8 @@ pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) 
                     Some(d) => d.to_rfc3339(),
                     None => serde_json::to_string(&profile.last_event_attended_date).unwrap(),
                 },
-                profile.user_id,
                 profile.username,
+                profile.user_id,
             ),
         )
         .await?;
