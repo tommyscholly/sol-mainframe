@@ -61,10 +61,10 @@ async fn write_to_db(event: Event, db_url: String, db_token: String) {
 
     let conn_arc = Arc::new(conn.clone());
     let mut unlogged = event.log_attendance(conn_arc.clone()).await;
-    if unlogged.len() != 0 {
+    if !unlogged.is_empty() {
         let mut tries = 0;
         loop {
-            if unlogged.len() == 0 {
+            if !unlogged.is_empty() {
                 break;
             }
             if tries > 5 {
@@ -77,7 +77,7 @@ async fn write_to_db(event: Event, db_url: String, db_token: String) {
                 kind: event.kind.clone(),
                 location: event.location.clone(),
                 metadata: event.metadata.clone(),
-                event_date: event.event_date.clone(),
+                event_date: event.event_date,
             };
             unlogged = fake_event.log_attendance(conn_arc.clone()).await;
             tries += 1;

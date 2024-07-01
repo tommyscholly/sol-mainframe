@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 
 use cosmetics::CosmeticUserInfo;
 use libsql::{Builder, Connection};
@@ -121,10 +122,10 @@ async fn get_profile(
         if sol_rank_id != 999 && profile.try_update_rank(sol_rank_id) {
             update = true;
         }
-        if profile.try_reset_events() {
+        if sol_rank_id != 999 && profile.try_reset_events() {
             update = true;
         }
-        if profile.try_update_username().await {
+        if sol_rank_id != 999 && profile.try_update_username().await {
             update = true;
         }
         if update {
@@ -189,8 +190,32 @@ async fn increment_events(
     }
 
     profile.events_attended_this_week += increment;
+    let event_date: DateTime<Utc> = Utc::now();
+    profile.last_event_attended_date = Some(event_date);
 
     profile.try_award_mark();
+
+    if let Err(e) = database::update_profile(profile, in_db, conn.into()).await {
+        eprintln!("Failed to update profile {}, with error {}", user_id, e);
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    StatusCode::OK
+}
+
+async fn add_mark(State(state): State<AppState>, Path(user_id): Path<u64>) -> StatusCode {
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
+    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
+        Ok(None) => {
+            println!("Profile {user_id} retrieval failed, not in SOL");
+            return StatusCode::NOT_FOUND;
+        }
+        Ok(Some((id, _))) => id,
+        Err(_e) => 999,
+    };
+    let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
+    profile.marks_at_current_rank += 1;
+    profile.total_marks += 1;
 
     if let Err(e) = database::update_profile(profile, in_db, conn.into()).await {
         eprintln!("Failed to update profile {}, with error {}", user_id, e);
@@ -332,6 +357,7 @@ async fn main() {
         .route("/profiles/create", post(create_profile))
         .route("/profiles/update", post(update_profiles))
         .route("/profiles/increment/:id/:inc", post(increment_events))
+        .route("/profiles/marks/:id", post(add_mark))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))
         .route("/events/attended/:id", get(get_events_attended))
