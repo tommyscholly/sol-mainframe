@@ -110,11 +110,6 @@ impl Profile {
     }
     pub fn from_row(row: &Row) -> Self {
         let user_id = row.get::<u64>(0).unwrap();
-        // let username = if username_or_null_string == "null" {
-        //     None
-        // } else {
-        //     Some(username_or_null_string)
-        // };
         let rank_id = row.get::<u64>(1).unwrap();
         let event_date_string = row.get::<String>(2).unwrap();
         let event_date_opt_string = if event_date_string == "null" {
