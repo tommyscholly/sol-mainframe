@@ -9,12 +9,13 @@ use crate::{
 };
 
 pub trait Attendance {
-    async fn log_attendance(&self, db: Arc<Connection>);
+    async fn log_attendance(&self, db: Arc<Connection>) -> Vec<u64>;
 }
 
 impl Attendance for Event {
-    async fn log_attendance(&self, db: Arc<Connection>) {
+    async fn log_attendance(&self, db: Arc<Connection>) -> Vec<u64> {
         let attendance = self.attendance.clone();
+        let mut failures = Vec::new();
         for user_id in attendance {
             let event_date = self.event_date;
             let db_ref = db.clone();
@@ -38,8 +39,11 @@ impl Attendance for Event {
             profile.try_award_mark();
 
             if let Err(e) = database::update_profile(profile, in_db, db_ref).await {
+                failures.push(user_id);
                 eprintln!("Failed to update profile {}, with error {}", user_id, e);
             }
         }
+
+        failures
     }
 }

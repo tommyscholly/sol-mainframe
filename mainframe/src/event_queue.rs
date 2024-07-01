@@ -59,6 +59,31 @@ impl EventQueue {
 async fn write_to_db(event: Event, db_url: String, db_token: String) {
     let conn = crate::get_db_conn(db_url, db_token).await.unwrap();
 
+    let conn_arc = Arc::new(conn.clone());
+    let mut unlogged = event.log_attendance(conn_arc.clone()).await;
+    if unlogged.len() != 0 {
+        let mut tries = 0;
+        loop {
+            if unlogged.len() == 0 {
+                break;
+            }
+            if tries > 5 {
+                eprintln!("failed to log {unlogged:?}");
+                break;
+            }
+            let fake_event = Event {
+                host: event.host,
+                attendance: unlogged,
+                kind: event.kind.clone(),
+                location: event.location.clone(),
+                metadata: event.metadata.clone(),
+                event_date: event.event_date.clone(),
+            };
+            unlogged = fake_event.log_attendance(conn_arc.clone()).await;
+            tries += 1;
+        }
+    }
+
     let attendance_string = serde_json::to_string(&event.attendance).unwrap();
     conn.execute("INSERT INTO events (host, attendance, event_date, kind, location) VALUES (?1, ?2, ?3, ?4, ?5)", (
         event.host,
@@ -67,9 +92,6 @@ async fn write_to_db(event: Event, db_url: String, db_token: String) {
         event.kind.as_str(),
         event.location.as_str(),
     )).await.unwrap();
-
-    let conn_arc = Arc::new(conn);
-    event.log_attendance(conn_arc).await;
 }
 
 // can get stuck in one of these for a while
@@ -102,6 +124,9 @@ pub async fn process_event(event: EventJsonBody) -> Event {
         sleep(Duration::from_secs(1)).await;
     }
 
+    if attendees.len() != names.len() {
+        eprintln!("attendees does not match names");
+    }
     Event::new(event.host, attendees, event.location, event.kind)
 }
 
