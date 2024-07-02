@@ -294,6 +294,17 @@ pub async fn increment_events(user_id: u64, increment: i32) -> Result<()> {
     Ok(())
 }
 
+pub async fn add_mark(user_id: u64) -> Result<()> {
+    let client = Client::new();
+    client
+        .post(format!("{MAINFRAME_URL}/profiles/marks/{user_id}"))
+        .header("api-key", API_KEY)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct CreateProfileBody {
     pub user_id: u64,
