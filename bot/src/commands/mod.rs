@@ -1,6 +1,8 @@
+use std::borrow::Cow;
+
 use poise::serenity_prelude::{
     ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, EditMessage, User,
+    CreateEmbedFooter, CreateInteractionResponse, EditMessage, Member, User,
 };
 use poise::{command, Modal};
 use sol_util::{mainframe, roblox};
@@ -70,6 +72,29 @@ struct EventInputForm {
 //     Ok(())
 // }
 
+async fn is_officer(ctx: Context<'_>, member: Cow<'_, Member>) -> Result<bool, Error> {
+    let roblox_user_id =
+        match get_roblox_id_from_member(member.user.id.get(), &ctx.data().rowifi_token).await? {
+            Some(id) => id,
+            None => {
+                return Ok(false);
+            }
+        };
+    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id).await {
+        Ok(None) => {
+            return Ok(false);
+        }
+        Ok(Some((id, _))) => id,
+        Err(_) => return Ok(false),
+    };
+    let rank = Rank::from_rank_id(sol_rank_id).unwrap();
+    if !rank.is_officer() {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
 /// Get event command
 #[command(slash_command)]
 pub async fn event_info(
@@ -107,6 +132,15 @@ pub async fn add_event(
     #[description = "User to add an event to"] name: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
+    let member = ctx.author_member().await;
+    match is_officer(ctx, member.unwrap()).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => {
+            ctx.reply("You are not an officer!").await?;
+            return Ok(());
+        }
+    }
+
     let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
     let user_id = if let Some(Some(id)) = user_ids.get(&name) {
         *id
@@ -125,32 +159,48 @@ pub async fn add_event(
 }
 
 #[command(slash_command)]
+pub async fn add_mark(
+    ctx: Context<'_>,
+    #[description = "User to add an event to"] name: String,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    let member = ctx.author_member().await;
+    match is_officer(ctx, member.unwrap()).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => {
+            ctx.reply("You are not an officer!").await?;
+            return Ok(());
+        }
+    }
+
+    let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
+    let user_id = if let Some(Some(id)) = user_ids.get(&name) {
+        *id
+    } else {
+        ctx.say(&format!(
+            "No user id for {name}, please check to see if it's their current username."
+        ))
+        .await?;
+        return Ok(());
+    };
+
+    sol_util::mainframe::add_mark(user_id).await?;
+    ctx.reply(format!("Added a mark for {name}")).await?;
+
+    Ok(())
+}
+
+#[command(slash_command)]
 pub async fn promotable(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
 
     let member = ctx.author_member().await;
-    let roblox_user_id =
-        match get_roblox_id_from_member(member.unwrap().user.id.get(), &ctx.data().rowifi_token)
-            .await?
-        {
-            Some(id) => id,
-            None => {
-                ctx.say("Unable to get author of this command.").await?;
-                return Ok(());
-            }
-        };
-    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id).await {
-        Ok(None) => {
-            ctx.say("You are not in SOL").await?;
+    match is_officer(ctx, member.unwrap()).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => {
+            ctx.reply("You are not an officer!").await?;
             return Ok(());
         }
-        Ok(Some((id, _))) => id,
-        Err(e) => panic!("{}", e.to_string()),
-    };
-    let rank = Rank::from_rank_id(sol_rank_id).unwrap();
-    if !rank.is_officer() {
-        ctx.say("You are not an admin").await?;
-        return Ok(());
     }
 
     let promotable_ids = sol_util::mainframe::get_promotable().await?;

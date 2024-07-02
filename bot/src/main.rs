@@ -35,6 +35,7 @@ async fn main() {
 
     let options = poise::FrameworkOptions {
         commands: vec![
+            commands::add_mark(),
             commands::log_event(),
             commands::career(),
             commands::event_info(),
