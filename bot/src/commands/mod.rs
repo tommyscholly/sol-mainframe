@@ -1,8 +1,7 @@
-use std::borrow::Cow;
-
 use poise::serenity_prelude::{
-    ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed,
-    CreateEmbedFooter, CreateInteractionResponse, EditMessage, Member, User,
+    ButtonStyle, ChannelId, ComponentInteractionCollector, CreateActionRow, CreateButton,
+    CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateMessage, EditMessage, Member,
+    User,
 };
 use poise::{command, Modal};
 use sol_util::{mainframe, roblox};
@@ -15,6 +14,8 @@ use sol_util::rank::Rank;
 use crate::AppContext;
 use crate::Context;
 use crate::Error;
+
+const SHOUT_CHANNEL_ID: u64 = 700092013781057617;
 
 fn mark_bar(current: i32, goal: i32) -> String {
     let mut result = String::new();
@@ -72,27 +73,65 @@ struct EventInputForm {
 //     Ok(())
 // }
 
-async fn is_officer(ctx: Context<'_>, member: Cow<'_, Member>) -> Result<bool, Error> {
-    let roblox_user_id =
-        match get_roblox_id_from_member(member.user.id.get(), &ctx.data().rowifi_token).await? {
-            Some(id) => id,
-            None => {
-                return Ok(false);
-            }
-        };
-    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id).await {
-        Ok(None) => {
-            return Ok(false);
+async fn get_rank_from_member(member: &Member, token: &str) -> Result<u64, Error> {
+    let roblox_user_id = match get_roblox_id_from_member(member.user.id.get(), token).await? {
+        Some(id) => id,
+        None => {
+            return Err("no user id".into());
         }
-        Ok(Some((id, _))) => id,
-        Err(_) => return Ok(false),
     };
-    let rank = Rank::from_rank_id(sol_rank_id).unwrap();
-    if !rank.is_officer() {
-        return Ok(false);
+    match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id).await {
+        Ok(None) => Err("no rank id".into()),
+        Ok(Some((id, _))) => Ok(id),
+        Err(_) => Err("no rank id".into()),
     }
+}
 
-    Ok(true)
+async fn is_officer(ctx: Context<'_>, member: &Member) -> Result<bool, Error> {
+    let sol_rank_id = get_rank_from_member(member, &ctx.data().rowifi_token).await?;
+    let rank = Rank::from_rank_id(sol_rank_id).unwrap();
+    Ok(rank.is_officer())
+}
+
+async fn can_host_spars(ctx: Context<'_>, member: &Member) -> Result<bool, Error> {
+    let sol_rank_id = get_rank_from_member(member, &ctx.data().rowifi_token).await?;
+    let rank = Rank::from_rank_id(sol_rank_id).unwrap();
+    Ok(rank.can_host_spars())
+}
+
+#[command(slash_command)]
+pub async fn spar(
+    ctx: Context<'_>,
+    #[description = "Spar place name"] place_name: String,
+    #[description = "Access code"] code: String,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    let member = ctx.author_member().await.unwrap();
+    match can_host_spars(ctx, &member).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => {
+            ctx.reply("Only Senior Astartes+ can host spars!").await?;
+            return Ok(());
+        }
+    }
+    let chan_id = ChannelId::new(SHOUT_CHANNEL_ID);
+    let cache = ctx.serenity_context();
+    let chan = chan_id.to_channel(cache).await?;
+    let guild_chan = chan.guild().expect("Shout channel should exist");
+
+    let spar_embed = CreateEmbed::new()
+        .title("SPAR")
+        .field("Host", format!("<@{}>", member.user.id), false)
+        .field("Location", place_name, false)
+        .field("Access Code", code, false)
+        .color(0xF74F00)
+        .footer(make_footer());
+
+    let msg = CreateMessage::new().embed(spar_embed);
+
+    guild_chan.send_message(cache, msg).await?;
+    ctx.reply("Spar created!").await?;
+    Ok(())
 }
 
 /// Get event command
@@ -132,8 +171,8 @@ pub async fn add_event(
     #[description = "User to add an event to"] name: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let member = ctx.author_member().await;
-    match is_officer(ctx, member.unwrap()).await {
+    let member = ctx.author_member().await.unwrap();
+    match is_officer(ctx, &member).await {
         Ok(true) => {}
         Ok(false) | Err(_) => {
             ctx.reply("You are not an officer!").await?;
@@ -164,8 +203,8 @@ pub async fn add_mark(
     #[description = "User to add an event to"] name: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let member = ctx.author_member().await;
-    match is_officer(ctx, member.unwrap()).await {
+    let member = ctx.author_member().await.unwrap();
+    match is_officer(ctx, &member).await {
         Ok(true) => {}
         Ok(false) | Err(_) => {
             ctx.reply("You are not an officer!").await?;
@@ -194,8 +233,8 @@ pub async fn add_mark(
 pub async fn promotable(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
 
-    let member = ctx.author_member().await;
-    match is_officer(ctx, member.unwrap()).await {
+    let member = ctx.author_member().await.unwrap();
+    match is_officer(ctx, &member).await {
         Ok(true) => {}
         Ok(false) | Err(_) => {
             ctx.reply("You are not an officer!").await?;
