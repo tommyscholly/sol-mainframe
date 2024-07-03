@@ -74,22 +74,17 @@ impl Rank {
 
     pub fn is_officer(&self) -> bool {
         let value = Rank::to_u64(self).unwrap();
+        value != 100 && value >= 40
+    }
 
-        if value != 100 && value >= 40 {
-            return true;
-        }
-
-        false
+    pub fn can_host_spars(&self) -> bool {
+        let value = Rank::to_u64(self).unwrap();
+        value >= 5
     }
 
     pub fn is_council(&self) -> bool {
         let value = Rank::to_u64(self).unwrap();
-
-        if value >= 220 {
-            return true;
-        }
-
-        false
+        value >= 220
     }
 }
 
