@@ -99,9 +99,14 @@ pub async fn process_event(event: EventJsonBody) -> Event {
     let mut names = event.names.clone();
     let mut attendees = Vec::new();
     loop {
-        let attendees_map = sol_util::roblox::get_user_ids_from_usernames(&names)
-            .await
-            .expect("should get ids from roblox");
+        let attendees_opt = sol_util::roblox::get_user_ids_from_usernames(&names).await;
+        let attendees_map = match attendees_opt {
+            Ok(m) => m,
+            Err(_) => {
+                sleep(Duration::from_secs(10)).await;
+                continue;
+            }
+        };
 
         let mut found_all = true;
         let mut new_names = Vec::new();
