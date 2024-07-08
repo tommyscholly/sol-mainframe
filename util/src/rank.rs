@@ -116,3 +116,68 @@ impl Display for Rank {
         write!(f, "{}", name_str)
     }
 }
+
+pub struct MilitarumReqs {
+    pub dts: Option<u64>,
+    pub rts: Option<u64>,
+    pub warfare_events: Option<u64>,
+    pub zac_mins: Option<f64>,
+}
+
+#[derive(FromPrimitive, ToPrimitive)]
+pub enum MilitarumRank {
+    Enlisted = 1,
+    Conscript = 2,
+    Trooper = 3,
+    SeniorTrooper = 4,
+}
+
+impl MilitarumRank {
+    pub fn from_rank_id(rank_id: u64) -> Option<MilitarumRank> {
+        FromPrimitive::from_u64(rank_id)
+    }
+
+    pub fn reqs(&self) -> MilitarumReqs {
+        use MilitarumRank::*;
+        match *self {
+            Conscript => MilitarumReqs {
+                dts: Some(4),
+                rts: Some(4),
+                warfare_events: None,
+                zac_mins: None,
+            },
+            Trooper => MilitarumReqs {
+                dts: Some(5),
+                rts: Some(5),
+                warfare_events: Some(10),
+                zac_mins: Some(7.0),
+            },
+            SeniorTrooper => MilitarumReqs {
+                dts: Some(6),
+                rts: Some(6),
+                warfare_events: Some(12),
+                zac_mins: Some(10.0),
+            },
+            Enlisted => MilitarumReqs {
+                dts: None,
+                rts: None,
+                warfare_events: None,
+                zac_mins: None,
+            },
+        }
+    }
+}
+
+impl Display for MilitarumRank {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use MilitarumRank::*;
+        let name_str = match *self {
+            Enlisted => "Enlisted",
+            Conscript => "Conscript",
+            Trooper => "Trooper",
+            SeniorTrooper => "Senior Trooper",
+        };
+
+        write!(f, "{}", name_str)
+    }
+}

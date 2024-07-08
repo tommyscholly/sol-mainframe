@@ -3,6 +3,7 @@ use poise::serenity_prelude::{
     ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, EditMessage, User,
 };
+use sol_util::rank::MilitarumRank;
 
 use crate::commands::{get_roblox_id_from_member, make_footer, mark_bar};
 use sol_util::{get_division_tags, rank::Rank, roblox};
@@ -45,20 +46,25 @@ pub async fn progress(
         }
     };
 
+    let progress = sol_util::mainframe::get_progress(roblox_user_id).await?;
+    let mili_rank = match MilitarumRank::from_rank_id(progress.rank_id) {
+        Some(rank) => rank,
+        None => {
+            ctx.reply("Not a Militarum member!").await?;
+            return Ok(());
+        }
+    };
     let primary_group_id = roblox::get_primary_group_id(roblox_user_id).await?;
     let primaried = primary_group_id == roblox::MILITARUM_GROUP_ID;
 
     let headshot_result = roblox::get_headshot_url(roblox_user_id).await;
     let headshot_url = headshot_result.unwrap_or("".to_string());
-    let dt_bar = mark_bar(1, 4);
-    let rt_bar = mark_bar(5, 4);
-    let warfare_events = mark_bar(6, 10);
     let embed = CreateEmbed::new()
-        .title("Trooper tomspell")
-        .field("Defense Trainings", dt_bar, false)
-        .field("Raid Trainings", rt_bar, false)
-        .field("Warfare Events", warfare_events, false)
-        .field("7 Minutes ZAC", "<:UncheckedBox:1241931751295684678>", true)
+        .title(format!(
+            "{} {}",
+            mili_rank,
+            progress.username.unwrap_or(format!("{roblox_user_id}"))
+        ))
         .field(
             "Militarum Primaried",
             if primaried {
@@ -71,6 +77,50 @@ pub async fn progress(
         .footer(make_footer())
         .thumbnail(headshot_url)
         .color(0x568259);
+
+    let reqs = mili_rank.reqs();
+    let embed = match reqs.dts {
+        Some(dts) => {
+            let dt_bar = mark_bar(progress.dts.try_into().unwrap(), dts.try_into().unwrap());
+            embed.field("Defense Trainings", dt_bar, false)
+        }
+        None => embed,
+    };
+    let embed = match reqs.rts {
+        Some(rts) => {
+            let rt_bar = mark_bar(progress.rts.try_into().unwrap(), rts.try_into().unwrap());
+            embed.field("Raid Trainings", rt_bar, false)
+        }
+        None => embed,
+    };
+    let embed = match reqs.warfare_events {
+        Some(we) => {
+            let we_bar = mark_bar(
+                progress.warfare_events.try_into().unwrap(),
+                we.try_into().unwrap(),
+            );
+            embed.field("Warfare Events", we_bar, false)
+        }
+        None => embed,
+    };
+    let embed = match reqs.zac_mins {
+        Some(mins) => {
+            if progress.zac_mins >= mins {
+                embed.field(
+                    format!("{} Minutes ZAC", mins),
+                    "<:RedCheckmark:1241905952144494642>",
+                    true,
+                )
+            } else {
+                embed.field(
+                    format!("{} Minutes ZAC", mins),
+                    "<:UncheckedBox:1241931751295684678>",
+                    true,
+                )
+            }
+        }
+        None => embed,
+    };
 
     let reply = poise::CreateReply::default().embed(embed);
 
