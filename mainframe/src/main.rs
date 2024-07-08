@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use cosmetics::CosmeticUserInfo;
 use libsql::{Builder, Connection};
 use sol_util::{
-    mainframe::{CreateProfileBody, Event, EventJsonBody, Profile},
+    mainframe::{CreateProfileBody, Event, EventJsonBody, Profile, Progress},
     roblox,
 };
 use tokio::sync::Mutex;
@@ -96,6 +96,27 @@ async fn update_cosmetics(
     }
 
     StatusCode::OK
+}
+
+async fn get_progress(
+    State(state): State<AppState>,
+    Path(user_id): Path<u64>,
+) -> Json<Option<Progress>> {
+    println!("Retrieving Militarum progress for {user_id}");
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
+
+    let mili_rank_id = match roblox::get_rank_in_group(roblox::MILITARUM_GROUP_ID, user_id).await {
+        Ok(None) => {
+            println!("Profile {user_id} retrieval failed, not in Militarum");
+            return Json(None);
+        }
+        Ok(Some((id, _))) => id,
+        // this error is probably a timeout, we can normally ignore it
+        Err(_e) => 999,
+    };
+
+    let progress = database::get_progress(user_id, mili_rank_id, &conn).await;
+    Json(Some(progress))
 }
 
 async fn get_profile(
@@ -352,6 +373,7 @@ async fn main() {
     };
 
     let app = Router::new()
+        .route("/progress/:id", get(get_progress))
         .route("/profiles/:id", get(get_profile))
         .route("/profiles/promotable", get(get_promotable))
         .route("/profiles/create", post(create_profile))

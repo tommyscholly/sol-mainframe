@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 pub const SOL_GROUP_ID: u64 = 2764561;
+pub const MILITARUM_GROUP_ID: u64 = 9138660;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -42,6 +43,16 @@ pub struct UserGroupInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GroupResponse {
     data: Vec<UserGroupInfo>,
+}
+
+pub async fn get_primary_group_id(user_id: u64) -> Result<u64, reqwest::Error> {
+    let response = reqwest::get(format!(
+        "https://groups.roblox.com/v1/users/{user_id}/groups/primary/role"
+    ))
+    .await?;
+    let group_info = response.json::<UserGroupInfo>().await?;
+
+    Ok(group_info.group.id)
 }
 
 pub async fn get_user_info_from_id(user_id: u64) -> Result<UsernameResponse, reqwest::Error> {

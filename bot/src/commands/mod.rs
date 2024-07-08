@@ -1,19 +1,16 @@
-use poise::serenity_prelude::{
-    ButtonStyle, ChannelId, ComponentInteractionCollector, CreateActionRow, CreateButton,
-    CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateMessage, EditMessage, Member,
-    User,
-};
+use poise::serenity_prelude::{ChannelId, CreateEmbed, CreateEmbedFooter, CreateMessage, Member};
 use poise::{command, Modal};
 use sol_util::{mainframe, roblox};
 use tokio::task::JoinSet;
 
 use crate::rowifi;
-use sol_util::get_division_tags;
 use sol_util::rank::Rank;
 
 use crate::AppContext;
 use crate::Context;
 use crate::Error;
+
+pub mod career;
 
 const SHOUT_CHANNEL_ID: u64 = 700092013781057617;
 
@@ -52,26 +49,7 @@ struct EventInputForm {
     #[name = "Hosting Location"]
     #[min_length = 4]
     location: String,
-    #[name = "Event Kind (DT, Raid, Defense, ...)"]
-    #[min_length = 2]
-    kind: String,
 }
-
-// #[command(slash_command)]
-// pub async fn test(ctx: Context<'_>) -> Result<(), Error> {
-//     let member = ctx.author_member().await;
-//     if let Some(m) = member {
-//         if &m.user.id.to_string() == "81379701913812992" {
-//             println!("assigning role");
-//             m.add_role(ctx.http(), 804114011431239723).await?;
-//             ctx.reply("done!").await?;
-//             return Ok(());
-//         }
-//     }
-//
-//     ctx.reply("not tomspell!").await?;
-//     Ok(())
-// }
 
 async fn get_rank_from_member(member: &Member, token: &str) -> Result<u64, Error> {
     let roblox_user_id = match get_roblox_id_from_member(member.user.id.get(), token).await? {
@@ -266,7 +244,10 @@ pub async fn promotable(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Log event command
 #[command(slash_command)]
-pub async fn log_event(ctx: AppContext<'_>) -> Result<(), Error> {
+pub async fn log_event(
+    ctx: AppContext<'_>,
+    #[choices("DT", "RT", "RAID", "DEFENSE", "SCRIM", "TRAINING", "OTHER")] event_kind: &str,
+) -> Result<(), Error> {
     // ctx.defer().await?;
     let member = ctx.author_member().await;
     let roblox_user_id =
@@ -305,12 +286,12 @@ pub async fn log_event(ctx: AppContext<'_>) -> Result<(), Error> {
             roblox_user_id,
             attendees,
             form.location.clone(),
-            form.kind.clone(),
+            event_kind.to_string(),
         )
         .await?;
         ctx.reply(format!(
             "{} @ {}, hosted by {}",
-            form.kind, form.location, roblox_user_id
+            event_kind, form.location, roblox_user_id
         ))
         .await?;
     }
@@ -318,218 +299,9 @@ pub async fn log_event(ctx: AppContext<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Default career command
-#[command(prefix_command, slash_command)]
-pub async fn career(
-    ctx: Context<'_>,
-    #[description = "Roblox username"] username: Option<String>,
-    #[description = "Discord user"] discord_user: Option<User>,
-) -> Result<(), Error> {
-    let prefix = ctx.prefix();
-    if prefix != "/" {
-        ctx.reply("Retrieving your profile").await?;
-    }
-
-    ctx.defer().await?;
-    let roblox_user_id = match username {
-        Some(ref name) => {
-            let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
-            if let Some(Some(id)) = user_ids.get(name) {
-                *id
-            } else {
-                ctx.say(&format!(
-                    "No user id for {name}, please check to see if it's their current username."
-                ))
-                .await?;
-                return Ok(());
-            }
-        }
-        None => {
-            let member = match discord_user {
-                Some(user) => user.id,
-                None => ctx.author_member().await.unwrap().user.id,
-            }
-            .get();
-            match get_roblox_id_from_member(member, &ctx.data().rowifi_token).await? {
-                Some(id) => id,
-                None => {
-                    ctx.say("Unable to get author of this command.").await?;
-                    return Ok(());
-                }
-            }
-        }
-    };
-
-    let (
-        user_profile_result,
-        num_events_result,
-        // user_info_result,
-        headshot_result,
-        division_tags_result,
-        // rank_result,
-    ) = tokio::join!(
-        sol_util::mainframe::get_profile(roblox_user_id),
-        sol_util::mainframe::get_num_attendance(roblox_user_id),
-        // roblox::get_user_info_from_id(roblox_user_id),
-        roblox::get_headshot_url(roblox_user_id),
-        get_division_tags(roblox_user_id),
-        // roblox::get_rank_in_group(roblox::SOL_GROUP_ID, roblox_user_id)
-    );
-
-    // let (sol_rank_id, _) = match rank_result? {
-    //     Some((id, rank_name)) => (id, rank_name),
-    //     None => {
-    //         ctx.say("User is not in SOL.").await?;
-    //         return Ok(());
-    //     }
-    // };
-
-    let user_profile = match user_profile_result {
-        Ok(p) => p,
-        Err(e) => {
-            if let Some(name) = username {
-                ctx.reply(format!("{name} does not have a profile. {e}"))
-                    .await?;
-            } else {
-                ctx.reply(format!("You do not have a profile. {e}")).await?;
-            }
-            return Ok(());
-        }
-    };
-
-    let rank = match Rank::from_rank_id(user_profile.rank_id) {
-        Some(r) => r,
-        None => {
-            ctx.say("User is not in SOL.").await?;
-            return Ok(());
-        }
-    };
-
-    // let user_info = user_info_result?;
-    let num_events = num_events_result.unwrap_or(0);
-    let headshot_url = headshot_result.unwrap_or("".to_string());
-    let divison_tags = division_tags_result.unwrap_or("".to_string());
-
-    let next_rank = rank.next();
-
-    let marks = user_profile.total_marks;
-    let rank_marks = user_profile.marks_at_current_rank;
-    let username = user_profile
-        .username
-        .unwrap_or(format!("User {}", user_profile.user_id));
-
-    let embed = CreateEmbed::new()
-        .title(format!("{}{} {}", divison_tags, rank, username))
-        .field(
-            "Total Events Attended",
-            format!("{num_events} Events"),
-            true,
-        )
-        .description(format!("**{}** Career Marks", marks))
-        .footer(make_footer())
-        .thumbnail(headshot_url)
-        .color(0x800000);
-
-    let embed = match rank.required_marks() {
-        Some(req_marks) => {
-            let mark_bar = mark_bar(rank_marks, req_marks);
-            embed
-                .field(
-                    "Weekly Events Attended",
-                    format!("**{}**/4 Events", user_profile.events_attended_this_week),
-                    true,
-                )
-                .field(
-                    format!("Progress to {}", next_rank.unwrap()),
-                    format!("{mark_bar}: {}/{} Marks", rank_marks, req_marks),
-                    false,
-                )
-        }
-        None => match next_rank {
-            Some(next) => embed.field(
-                format!("Progress to {next}"),
-                format!("There is no more automatic progression for {rank}"),
-                false,
-            ),
-            None => embed.field(
-                "Max Rank Achieved",
-                format!("There is no rank above {rank}"),
-                false,
-            ),
-        },
-    };
-
-    let button_id = ctx.id();
-    let career_button = CreateButton::new(format!("{button_id}_career"))
-        .label("CAREER")
-        .style(ButtonStyle::Danger);
-
-    let honors_button = CreateButton::new(format!("{button_id}_events"))
-        .label("EVENTS")
-        .style(ButtonStyle::Secondary);
-
-    let action_row = CreateActionRow::Buttons(vec![career_button, honors_button]);
-
-    let reply = poise::CreateReply::default()
-        .embed(embed.clone())
-        .components(vec![action_row]);
-
-    ctx.send(reply).await?;
-
-    let mut cached_events_embed: Option<CreateEmbed> = None;
-    while let Some(mci) = ComponentInteractionCollector::new(ctx)
-        .author_id(ctx.author().id)
-        .channel_id(ctx.channel_id())
-        .timeout(std::time::Duration::from_secs(30))
-        .filter(move |mci| {
-            mci.data.custom_id == format!("{button_id}_career")
-                || mci.data.custom_id == format!("{button_id}_events")
-        })
-        .await
-    {
-        if mci.data.custom_id == format!("{button_id}_events") {
-            let e = match cached_events_embed {
-                Some(ref e) => e.clone(),
-                None => {
-                    let events_vec =
-                        sol_util::mainframe::get_events_attended(roblox_user_id).await?;
-                    let embed = CreateEmbed::new()
-                        .title(format!("{}'s attended events", username))
-                        .footer(make_footer())
-                        .color(0x800000);
-
-                    let events_string = events_vec
-                        .into_iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<String>>()
-                        .join(", ");
-                    let embed = embed.field("Attended Event Ids", events_string, true);
-                    cached_events_embed = Some(embed.clone());
-                    embed
-                }
-            };
-
-            let mut msg = mci.message.clone();
-            msg.edit(ctx, EditMessage::new().embed(e)).await?;
-
-            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
-                .await?;
-        } else {
-            let mut msg = mci.message.clone();
-            msg.edit(ctx, EditMessage::new().embed(embed.clone()))
-                .await?;
-
-            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
-                .await?;
-        }
-    }
-
-    Ok(())
-}
-
 #[command(slash_command)]
 pub async fn celestine_help(ctx: Context<'_>) -> Result<(), Error> {
-    let help_embed = CreateEmbed::new().title("Help").footer(make_footer()).color(0x8888FF).field("/career ?[username] ?[discord user]", "Returns the career of the specified user. Has 2 optional arguments, either a roblox username, a discord user, or nothing at all", true).field("/log_event", "Allows officers to log an event", true).field("/event_info [event_id]", "Returns information about a given event", true).field("/promotable", "Allows officers to see which Astartes are eligible for promotion", true);
+    let help_embed = CreateEmbed::new().title("Help").footer(make_footer()).color(0x8888FF).field("/career ?[username] ?[discord user]", "Returns the career of the specified user. Has 2 optional arguments, either a roblox username, a discord user, or nothing at all", true).field("/log_event", "Allows officers to log an event", true).field("/event_info [event_id]", "Returns information about a given event", true).field("/promotable", "Allows officers to see which Astartes are eligible for promotion", true).field("/add_mark [username]", "Adds a mark to the specified user", true);
 
     let reply = poise::CreateReply::default().embed(help_embed.clone());
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Duration, NaiveDateTime, NaiveTime, Utc};
 use libsql::Connection;
-use sol_util::mainframe::{Event, Profile};
+use sol_util::mainframe::{Event, Profile, Progress};
 use sol_util::roblox;
 use tokio::time;
 
@@ -23,6 +23,36 @@ pub async fn get_profile(user_id: u64, sol_rank_id: u64, db: &Connection) -> (Pr
         // (probably)
         Err(_) => (Profile::new(user_id, None, sol_rank_id), false),
     }
+}
+
+pub async fn get_progress(user_id: u64, mili_rank_id: u64, db: &Connection) -> Progress {
+    let default_progress = Progress {
+        user_id,
+        rank_id: mili_rank_id,
+        username: None,
+        dts: 0,
+        rts: 0,
+        warfare_events: 0,
+        zac_mins: 0.0,
+    };
+
+    let mut response = db
+        .query(
+            "SELECT * FROM militarum_progress WHERE user_id = ?1",
+            [user_id],
+        )
+        .await
+        .unwrap();
+
+    let row = match response.next().await {
+        Ok(r) => match r {
+            Some(r) => r,
+            None => return default_progress,
+        },
+        Err(_) => return default_progress,
+    };
+
+    Progress::from_row(&row)
 }
 
 pub async fn get_attended(user_id: u64, db: Connection) -> u64 {
@@ -75,6 +105,47 @@ pub async fn get_event(event_id: i32, db: Connection) -> Result<Option<Event>> {
         println!("{event_row:?}");
         Event::from_row(&event_row)
     }))
+}
+
+pub async fn update_progress(progress: Progress, db: Arc<Connection>) -> Result<()> {
+    let rows_updated = db
+        .execute(
+            r#"UPDATE militarum_progress
+            SET
+                rank_id = ?1,
+                username = ?2,
+                rts = ?3,
+                dts = ?4,
+                warfare_events = ?5,
+                zac_mins = ?6,
+            WHERE user_id = ?7
+            "#,
+            (
+                progress.rank_id,
+                progress.username.clone(),
+                progress.rts,
+                progress.dts,
+                progress.warfare_events,
+                progress.zac_mins,
+                progress.user_id,
+            ),
+        )
+        .await?;
+
+    if rows_updated == 0 {
+        db.execute(r#"INSERT INTO militarum_progress (user_id, rank_id, username, rts, dts, warfare_events, zac_mins)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#, (
+                progress.user_id,
+                progress.rank_id,
+                progress.username,
+                progress.rts,
+                progress.dts,
+                progress.warfare_events,
+                progress.zac_mins,
+        )).await?;
+    }
+
+    Ok(())
 }
 
 pub async fn update_profile(profile: Profile, in_db: bool, db: Arc<Connection>) -> Result<()> {
@@ -223,7 +294,7 @@ pub async fn update_all(url: String, token: String) -> Result<()> {
 
     drop(db);
 
-    while let Some(mut user) = users.pop_front() {
+    while let Some(user) = users.pop_front() {
         let id_opt = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user.user_id).await {
             Ok(id_opt) => id_opt,
             Err(e) => {
@@ -236,19 +307,7 @@ pub async fn update_all(url: String, token: String) -> Result<()> {
 
         let db = Arc::new(crate::get_db_conn(url.clone(), token.clone()).await?);
         match id_opt {
-            Some((id, _)) => {
-                if id != user.rank_id {
-                    // think its safe to reset the marks
-                    let old_rank_id = user.rank_id;
-                    user.try_update_rank(id);
-                    user.try_reset_events();
-                    println!(
-                        "Updating user {}: was {} now {}",
-                        user.user_id, old_rank_id, id
-                    );
-                    update_profile(user, true, db).await?;
-                }
-            }
+            Some((_id, _)) => {}
             // user isnt in sol anymore, need to remove the profile
             None => {
                 println!("User {} is no longer in SOL", user.user_id);

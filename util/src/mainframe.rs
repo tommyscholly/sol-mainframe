@@ -14,6 +14,38 @@ use crate::{
 const MAINFRAME_URL: &str = "http://localhost:3000";
 const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
 
+pub enum EventKind {
+    DT,
+    RT,
+    RAID,
+    DEFENSE,
+    SCRIM,
+    TRAINING,
+    OTHER,
+}
+
+impl From<String> for EventKind {
+    fn from(value: String) -> Self {
+        if value == "DT" {
+            Self::DT
+        } else if value == "RT" {
+            Self::RT
+        } else if value == "RAID" {
+            Self::RAID
+        } else if value == "DEFENSE" {
+            Self::DEFENSE
+        } else if value == "SCRIM" {
+            Self::SCRIM
+        } else if value == "TRAINING" {
+            Self::TRAINING
+        } else if value == "OTHER" {
+            Self::OTHER
+        } else {
+            unreachable!()
+        }
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct Event {
     pub host: u64,
@@ -83,6 +115,69 @@ fn has_date_rolled_over(previous_date: DateTime<Utc>) -> bool {
     }
 
     false
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug)]
+// militarum progress
+pub struct Progress {
+    pub user_id: u64,
+    pub username: Option<String>,
+    pub rank_id: u64,
+    pub dts: u64,
+    pub rts: u64,
+    pub warfare_events: u64,
+    pub zac_mins: f64,
+}
+
+impl Progress {
+    pub async fn try_update_username(&mut self) -> bool {
+        let user_info = match roblox::get_user_info_from_id(self.user_id).await {
+            Ok(r) => r,
+            Err(_) => return false,
+        };
+
+        match &self.username {
+            Some(name) => {
+                if *name != user_info.name {
+                    self.username = Some(user_info.name);
+                    return true;
+                }
+            }
+            None => {
+                self.username = Some(user_info.name);
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn reset(&mut self) {
+        self.dts = 0;
+        self.rts = 0;
+        self.warfare_events = 0;
+        self.zac_mins = 0.0;
+    }
+
+    pub fn from_row(row: &Row) -> Self {
+        let user_id = row.get::<u64>(0).unwrap();
+        let username = row.get::<Option<String>>(1).unwrap();
+        let rank_id = row.get::<u64>(2).unwrap();
+        let dts = row.get::<u64>(3).unwrap();
+        let rts = row.get::<u64>(4).unwrap();
+        let warfare_events = row.get::<u64>(5).unwrap();
+        let zac_mins = row.get::<f64>(6).unwrap();
+
+        Self {
+            user_id,
+            username,
+            rank_id,
+            rts,
+            dts,
+            warfare_events,
+            zac_mins,
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
@@ -210,7 +305,18 @@ pub async fn get_profile(user_id: u64) -> Result<Profile> {
         .await?;
 
     let profile = response.json::<Profile>().await?;
+    Ok(profile)
+}
 
+pub async fn get_progress(user_id: u64) -> Result<Progress> {
+    let client = Client::new();
+    let response = client
+        .get(format!("{MAINFRAME_URL}/progress/{user_id}"))
+        .header("api-key", API_KEY)
+        .send()
+        .await?;
+
+    let profile = response.json::<Progress>().await?;
     Ok(profile)
 }
 
