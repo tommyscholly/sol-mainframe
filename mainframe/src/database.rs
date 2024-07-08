@@ -298,8 +298,8 @@ pub async fn update_all(url: String, token: String) -> Result<()> {
         let id_opt = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user.user_id).await {
             Ok(id_opt) => id_opt,
             Err(e) => {
-                println!("Got error {e}, waiting 5 seconds");
-                time::sleep(time::Duration::from_secs(5)).await;
+                println!("Got error {e}, waiting 30 seconds");
+                time::sleep(time::Duration::from_secs(30)).await;
                 users.push_back(user);
                 continue;
             }
