@@ -71,6 +71,7 @@ async fn write_to_db(event: Event, db_url: String, db_token: String) {
                 eprintln!("failed to log {unlogged:?}");
                 break;
             }
+            sleep(Duration::from_secs(60)).await;
             let fake_event = Event {
                 host: event.host,
                 attendance: unlogged,

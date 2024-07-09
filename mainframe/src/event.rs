@@ -25,7 +25,10 @@ impl Attendance for Event {
             let rank_opt = match roblox::get_rank_in_group(SOL_GROUP_ID, user_id).await {
                 Ok(Some((id, _))) => Some(id),
                 Ok(None) => None,
-                Err(_) => None,
+                Err(_) => {
+                    failures.push(user_id);
+                    continue;
+                }
             };
 
             match rank_opt {
