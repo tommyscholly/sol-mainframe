@@ -117,7 +117,7 @@ pub async fn update_progress(progress: Progress, db: Arc<Connection>) -> Result<
                 rts = ?3,
                 dts = ?4,
                 warfare_events = ?5,
-                zac_mins = ?6,
+                zac_mins = ?6
             WHERE user_id = ?7
             "#,
             (

@@ -40,6 +40,7 @@ async fn main() {
             commands::log_event(),
             commands::career::career(),
             commands::career::progress(),
+            commands::collect_attendance(),
             commands::event_info(),
             commands::add_event(),
             commands::promotable(),

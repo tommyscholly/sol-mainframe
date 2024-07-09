@@ -46,7 +46,13 @@ pub async fn progress(
         }
     };
 
-    let progress = sol_util::mainframe::get_progress(roblox_user_id).await?;
+    let progress = match sol_util::mainframe::get_progress(roblox_user_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            return Ok(());
+        }
+    };
     let mili_rank = match MilitarumRank::from_rank_id(progress.rank_id) {
         Some(rank) => rank,
         None => {
@@ -65,15 +71,6 @@ pub async fn progress(
             mili_rank,
             progress.username.unwrap_or(format!("{roblox_user_id}"))
         ))
-        .field(
-            "Militarum Primaried",
-            if primaried {
-                "<:RedCheckmark:1241905952144494642>"
-            } else {
-                "<:UncheckedBox:1241931751295684678>"
-            },
-            true,
-        )
         .footer(make_footer())
         .thumbnail(headshot_url)
         .color(0x568259);
@@ -121,6 +118,15 @@ pub async fn progress(
         }
         None => embed,
     };
+    let embed = embed.field(
+        "Militarum Primaried",
+        if primaried {
+            "<:RedCheckmark:1241905952144494642>"
+        } else {
+            "<:UncheckedBox:1241931751295684678>"
+        },
+        true,
+    );
 
     let reply = poise::CreateReply::default().embed(embed);
 

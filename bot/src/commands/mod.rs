@@ -1,5 +1,8 @@
-use poise::serenity_prelude::{ChannelId, CreateEmbed, CreateEmbedFooter, CreateMessage, Member};
-use poise::{command, Modal};
+use poise::serenity_prelude::{
+    ButtonStyle, ChannelId, ComponentInteractionCollector, CreateActionRow, CreateButton,
+    CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateMessage, EditMessage, Member,
+};
+use poise::{command, CreateReply, Modal};
 use sol_util::{mainframe, roblox};
 use tokio::task::JoinSet;
 
@@ -75,6 +78,111 @@ async fn can_host_spars(ctx: Context<'_>, member: &Member) -> Result<bool, Error
     let sol_rank_id = get_rank_from_member(member, &ctx.data().rowifi_token).await?;
     let rank = Rank::from_rank_id(sol_rank_id).unwrap();
     Ok(rank.can_host_spars())
+}
+
+#[command(slash_command)]
+pub async fn collect_attendance(
+    ctx: Context<'_>,
+    #[choices("DT", "RT", "RAID", "DEFENSE", "SCRIM", "TRAINING", "OTHER")] event_kind: &str,
+    location: String,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    let member = ctx.author_member().await.unwrap();
+    match is_officer(ctx, &member).await {
+        Ok(true) => {}
+        Ok(false) | Err(_) => {
+            ctx.reply("Only officers can collect attendance.").await?;
+            return Ok(());
+        }
+    }
+
+    let embed = CreateEmbed::new()
+        .title(format!(
+            "A {event_kind} hosted at {location} is collecting attendance!"
+        ))
+        .description(
+            "Click the 'Attended' button at the bottom. There is a 5 minute timer, so act quickly.",
+        )
+        .footer(make_footer());
+
+    let button_id = ctx.id();
+    let attended_button = CreateButton::new(format!("{button_id}_attended"))
+        .label("ATTENDED")
+        .style(ButtonStyle::Danger);
+
+    let submit_button = CreateButton::new(format!("{button_id}_submit"))
+        .label("SUBMIT")
+        .style(ButtonStyle::Primary);
+
+    let action_row = CreateActionRow::Buttons(vec![attended_button, submit_button]);
+    let reply = poise::CreateReply::default()
+        .embed(embed.clone())
+        .components(vec![action_row]);
+
+    let reply_handle = ctx.send(reply).await?;
+
+    let mut attended: Vec<u64> = Vec::new();
+    let mut submitted = false;
+    while let Some(mci) = ComponentInteractionCollector::new(ctx)
+        .channel_id(ctx.channel_id())
+        .timeout(std::time::Duration::from_secs(300))
+        .filter(move |mci| {
+            mci.data.custom_id == format!("{button_id}_attended")
+                || mci.data.custom_id == format!("{button_id}_submit")
+        })
+        .await
+    {
+        if mci.data.custom_id == format!("{button_id}_submit") {
+            if mci.user.id != member.user.id {
+                continue;
+            }
+
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
+            submitted = true;
+            break;
+        } else {
+            let user_id = mci.user.id.get();
+            if let Some(idx) = attended.iter().position(|id| *id == user_id) {
+                attended.remove(idx);
+            } else {
+                attended.push(user_id);
+            }
+
+            let desc = attended
+                .iter()
+                .map(|id| format!("<@{id}>"))
+                .collect::<Vec<String>>()
+                .join("\n");
+            let embed = CreateEmbed::new()
+                .title(format!(
+                    "A {event_kind} hosted at {location} is collecting attendance!"
+                ))
+                .description(format!(
+                    "Click the 'Attended' button at the bottom. There is a 5 minute timer, so act quickly.\n\nAttendees: {desc}"
+                ))
+                .footer(make_footer());
+
+            let mut msg = mci.message.clone();
+            msg.edit(ctx, EditMessage::new().embed(embed)).await?;
+
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
+        }
+    }
+
+    if submitted {
+        reply_handle
+            .edit(
+                ctx,
+                CreateReply::default()
+                    .content("Event Submitted!")
+                    .components(vec![]),
+            )
+            .await?;
+    }
+
+    Ok(())
 }
 
 #[command(slash_command)]

@@ -38,10 +38,8 @@ impl From<String> for EventKind {
             Self::SCRIM
         } else if value == "TRAINING" {
             Self::TRAINING
-        } else if value == "OTHER" {
-            Self::OTHER
         } else {
-            unreachable!()
+            Self::OTHER
         }
     }
 }

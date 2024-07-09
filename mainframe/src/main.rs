@@ -115,7 +115,8 @@ async fn get_progress(
         Err(_e) => 999,
     };
 
-    let progress = database::get_progress(user_id, mili_rank_id, &conn).await;
+    let mut progress = database::get_progress(user_id, mili_rank_id, &conn).await;
+    progress.try_update_username().await;
     Json(Some(progress))
 }
 

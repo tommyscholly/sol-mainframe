@@ -22,7 +22,7 @@ pub struct UsernameResponse {
 pub struct GroupInfo {
     id: u64,
     name: String,
-    member_count: u64,
+    // member_count: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
