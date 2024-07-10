@@ -150,15 +150,20 @@ pub async fn collect_attendance(
         .await
     {
         if mci.data.custom_id == format!("{button_id}_submit") {
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
             if mci.user.id != member.user.id {
                 continue;
             }
 
             submitted = true;
-            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
-                .await?;
             break;
         } else if mci.data.custom_id == format!("{button_id}_filter") {
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
+            if mci.user.id != member.user.id {
+                continue;
+            }
             let select_menu = CreateSelectMenu::new(
                 format!("{button_id}_select_menu"),
                 CreateSelectMenuKind::User {
@@ -168,8 +173,6 @@ pub async fn collect_attendance(
             let follow_up = CreateInteractionResponseFollowup::new()
                 .select_menu(select_menu)
                 .ephemeral(true);
-            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
-                .await?;
             mci.create_followup(ctx, follow_up).await?;
         } else if mci.data.custom_id == format!("{button_id}_select_menu") {
             mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
