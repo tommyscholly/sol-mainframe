@@ -1,6 +1,8 @@
 use poise::serenity_prelude::{
-    ButtonStyle, ChannelId, ComponentInteractionCollector, CreateActionRow, CreateButton,
-    CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateMessage, EditMessage, Member,
+    ButtonStyle, ChannelId, ComponentInteractionCollector, ComponentInteractionDataKind,
+    CreateActionRow, CreateButton, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse,
+    CreateInteractionResponseFollowup, CreateMessage, CreateSelectMenu, CreateSelectMenuKind,
+    EditMessage, Member, UserId,
 };
 use poise::{command, CreateReply, Modal};
 use sol_util::{mainframe, roblox};
@@ -54,6 +56,15 @@ struct EventInputForm {
     location: String,
 }
 
+#[derive(poise::Modal, Debug)]
+#[name = "Event Logging Form"]
+struct CollectAttendanceForm {
+    #[name = "Excluded"]
+    #[placeholder = "Please input roblox usernames, comma separated"]
+    #[min_length = 4]
+    excluded: String,
+}
+
 async fn get_rank_from_member(member: &Member, token: &str) -> Result<u64, Error> {
     let roblox_user_id = match get_roblox_id_from_member(member.user.id.get(), token).await? {
         Some(id) => id,
@@ -82,13 +93,13 @@ async fn can_host_spars(ctx: Context<'_>, member: &Member) -> Result<bool, Error
 
 #[command(slash_command)]
 pub async fn collect_attendance(
-    ctx: Context<'_>,
+    ctx: AppContext<'_>,
     #[choices("DT", "RT", "RAID", "DEFENSE", "SCRIM", "TRAINING", "OTHER")] event_kind: &str,
     location: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let member = ctx.author_member().await.unwrap();
-    match is_officer(ctx, &member).await {
+    match is_officer(ctx.into(), &member).await {
         Ok(true) => {}
         Ok(false) | Err(_) => {
             ctx.reply("Only officers can collect attendance.").await?;
@@ -114,7 +125,11 @@ pub async fn collect_attendance(
         .label("SUBMIT")
         .style(ButtonStyle::Primary);
 
-    let action_row = CreateActionRow::Buttons(vec![attended_button, submit_button]);
+    let filter_button = CreateButton::new(format!("{button_id}_filter"))
+        .label("FILTER")
+        .style(ButtonStyle::Secondary);
+
+    let action_row = CreateActionRow::Buttons(vec![attended_button, submit_button, filter_button]);
     let reply = poise::CreateReply::default()
         .embed(embed.clone())
         .components(vec![action_row]);
@@ -129,6 +144,8 @@ pub async fn collect_attendance(
         .filter(move |mci| {
             mci.data.custom_id == format!("{button_id}_attended")
                 || mci.data.custom_id == format!("{button_id}_submit")
+                || mci.data.custom_id == format!("{button_id}_filter")
+                || mci.data.custom_id == format!("{button_id}_select_menu")
         })
         .await
     {
@@ -137,13 +154,40 @@ pub async fn collect_attendance(
                 continue;
             }
 
+            submitted = true;
             mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
                 .await?;
-            submitted = true;
             break;
-        } else {
+        } else if mci.data.custom_id == format!("{button_id}_filter") {
+            let select_menu = CreateSelectMenu::new(
+                format!("{button_id}_select_menu"),
+                CreateSelectMenuKind::User {
+                    default_users: Some(attended.iter().map(|&id| UserId::new(id)).collect()),
+                },
+            );
+            let follow_up = CreateInteractionResponseFollowup::new()
+                .select_menu(select_menu)
+                .ephemeral(true);
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
+            mci.create_followup(ctx, follow_up).await?;
+        } else if mci.data.custom_id == format!("{button_id}_select_menu") {
+            mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
+                .await?;
+            if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
+                for user_id in values {
+                    if let Some(idx) = attended.iter().position(|&id| id == user_id.get()) {
+                        let follow_up = CreateInteractionResponseFollowup::new()
+                            .content(format!("Removed <@{}>", user_id.get()))
+                            .ephemeral(true);
+                        mci.create_followup(ctx, follow_up).await?;
+                        attended.remove(idx);
+                    }
+                }
+            }
+        } else if mci.data.custom_id == format!("{button_id}_attended") {
             let user_id = mci.user.id.get();
-            if let Some(idx) = attended.iter().position(|id| *id == user_id) {
+            if let Some(idx) = attended.iter().position(|&id| id == user_id) {
                 attended.remove(idx);
             } else {
                 attended.push(user_id);
@@ -172,11 +216,46 @@ pub async fn collect_attendance(
     }
 
     if submitted {
+        let mut usernames = Vec::new();
+        for id in attended {
+            let id = match get_roblox_id_from_member(id, &ctx.data().rowifi_token).await? {
+                Some(roblox_id) => roblox_id,
+                None => {
+                    ctx.say(format!("<@{}> does not have a linked roblox account.", id))
+                        .await?;
+                    return Ok(());
+                }
+            };
+
+            let username = roblox::get_user_info_from_id(id).await?.name;
+            usernames.push(username);
+        }
+        let id = member.user.id.get();
+        let roblox_user_id = match get_roblox_id_from_member(id, &ctx.data().rowifi_token).await? {
+            Some(roblox_id) => roblox_id,
+            None => {
+                ctx.say(format!("<@{}> does not have a linked roblox account.", id))
+                    .await?;
+                return Ok(());
+            }
+        };
+        println!("{:?}", usernames);
+        mainframe::log_event(roblox_user_id, usernames, location, event_kind.to_string()).await?;
+
         reply_handle
             .edit(
-                ctx,
+                ctx.into(),
                 CreateReply::default()
                     .content("Event Submitted!")
+                    .components(vec![]),
+            )
+            .await?;
+    } else {
+        reply_handle
+            .edit(
+                ctx.into(),
+                CreateReply::default()
+                    .content("Not Submitted!")
                     .components(vec![]),
             )
             .await?;
