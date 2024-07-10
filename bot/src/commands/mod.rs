@@ -177,6 +177,7 @@ pub async fn collect_attendance(
         } else if mci.data.custom_id == format!("{button_id}_select_menu") {
             mci.create_response(ctx, CreateInteractionResponse::Acknowledge)
                 .await?;
+
             if let ComponentInteractionDataKind::UserSelect { values } = &mci.data.kind {
                 for user_id in values {
                     if let Some(idx) = attended.iter().position(|&id| id == user_id.get()) {
@@ -187,6 +188,22 @@ pub async fn collect_attendance(
                         attended.remove(idx);
                     }
                 }
+                let desc = attended
+                    .iter()
+                    .map(|id| format!("<@{id}>"))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+                let embed = CreateEmbed::new()
+                .title(format!(
+                    "A {event_kind} hosted at {location} is collecting attendance!"
+                ))
+                .description(format!(
+                    "Click the 'Attended' button at the bottom. There is a 5 minute timer, so act quickly.\n\nAttendees: {desc}"
+                ))
+                .footer(make_footer());
+
+                let reply = CreateReply::default().embed(embed);
+                reply_handle.edit(ctx.into(), reply).await?;
             }
         } else if mci.data.custom_id == format!("{button_id}_attended") {
             let user_id = mci.user.id.get();
