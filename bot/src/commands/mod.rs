@@ -164,10 +164,11 @@ pub async fn collect_attendance(
             if mci.user.id != member.user.id {
                 continue;
             }
+            let default = attended.iter().take(5).map(|&id| UserId::new(id)).collect();
             let select_menu = CreateSelectMenu::new(
                 format!("{button_id}_select_menu"),
                 CreateSelectMenuKind::User {
-                    default_users: Some(attended.iter().map(|&id| UserId::new(id)).collect()),
+                    default_users: Some(default),
                 },
             );
             let follow_up = CreateInteractionResponseFollowup::new()
@@ -354,6 +355,7 @@ pub async fn event_info(
 pub async fn add_event(
     ctx: Context<'_>,
     #[description = "User to add an event to"] name: String,
+    #[choices("DT", "RT", "RAID", "DEFENSE", "SCRIM", "TRAINING", "OTHER")] event_kind: &str,
 ) -> Result<(), Error> {
     ctx.defer().await?;
     let member = ctx.author_member().await.unwrap();
@@ -376,7 +378,7 @@ pub async fn add_event(
         return Ok(());
     };
 
-    sol_util::mainframe::increment_events(user_id, 1).await?;
+    sol_util::mainframe::increment_events(user_id, 1, event_kind).await?;
     ctx.reply(format!("Added an event for {name}")).await?;
 
     Ok(())

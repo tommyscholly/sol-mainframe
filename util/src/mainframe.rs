@@ -398,7 +398,12 @@ pub async fn log_event(
     Ok(())
 }
 
-pub async fn increment_events(user_id: u64, increment: i32) -> Result<()> {
+pub struct IncEventBody {
+    inc: i32,
+    event_kind: &'static str,
+}
+
+pub async fn increment_events(user_id: u64, increment: i32, event_kind: &str) -> Result<()> {
     let client = Client::new();
     client
         .post(format!(
