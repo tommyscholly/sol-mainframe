@@ -12,7 +12,9 @@ use chrono::{DateTime, Utc};
 use cosmetics::CosmeticUserInfo;
 use libsql::{Builder, Connection};
 use sol_util::{
-    mainframe::{CreateProfileBody, Event, EventJsonBody, Profile, Progress},
+    mainframe::{
+        CreateProfileBody, Event, EventJsonBody, EventKind, IncEventBody, Profile, Progress,
+    },
     roblox,
 };
 use tokio::sync::Mutex;
@@ -192,35 +194,66 @@ async fn update_profiles(State(state): State<AppState>) -> StatusCode {
 
 async fn increment_events(
     State(state): State<AppState>,
-    Path((user_id, increment)): Path<(u64, i32)>,
+    Path(user_id): Path<u64>,
+    Json(body): Json<IncEventBody>,
 ) -> StatusCode {
     let conn = get_db_conn(state.url, state.token).await.unwrap();
 
-    let sol_rank_id = match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
-        Ok(None) => {
-            println!("Profile {user_id} retrieval failed, not in SOL");
-            return StatusCode::NOT_FOUND;
+    match roblox::get_rank_in_group(roblox::SOL_GROUP_ID, user_id).await {
+        Ok(None) => match roblox::get_rank_in_group(roblox::MILITARUM_GROUP_ID, user_id).await {
+            Ok(None) | Err(_) => {
+                println!("Profile {user_id} retrieval failed, not in SOL");
+                return StatusCode::NOT_FOUND;
+            }
+            Ok(Some((mili_rank_id, _))) => {
+                let mut progress = database::get_progress(user_id, mili_rank_id, &conn).await;
+                if progress.rank_id != mili_rank_id {
+                    progress.reset();
+                    progress.rank_id = mili_rank_id;
+                }
+
+                progress.try_update_username().await;
+
+                let kind = EventKind::from(body.event_kind);
+                match kind {
+                    EventKind::RT => progress.rts += 1,
+                    EventKind::DT => progress.dts += 1,
+                    EventKind::RAID | EventKind::DEFENSE | EventKind::SCRIM => {
+                        progress.warfare_events += 1
+                    }
+                    _ => {}
+                }
+
+                if let Err(e) = database::update_progress(progress, Arc::new(conn)).await {
+                    eprintln!(
+                        "Failed to update militarum progress {}, with error {}",
+                        user_id, e
+                    );
+                    return StatusCode::INTERNAL_SERVER_ERROR;
+                }
+            }
+        },
+        Ok(Some((sol_rank_id, _))) => {
+            let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
+
+            profile.try_reset_events();
+            if sol_rank_id != 999 {
+                profile.try_update_rank(sol_rank_id);
+            }
+
+            profile.events_attended_this_week += body.inc;
+            let event_date: DateTime<Utc> = Utc::now();
+            profile.last_event_attended_date = Some(event_date);
+
+            profile.try_award_mark();
+
+            if let Err(e) = database::update_profile(profile, in_db, conn.into()).await {
+                eprintln!("Failed to update profile {}, with error {}", user_id, e);
+                return StatusCode::INTERNAL_SERVER_ERROR;
+            }
         }
-        Ok(Some((id, _))) => id,
-        Err(_e) => 999,
+        Err(_e) => return StatusCode::NOT_FOUND,
     };
-    let (mut profile, in_db) = database::get_profile(user_id, sol_rank_id, &conn).await;
-
-    profile.try_reset_events();
-    if sol_rank_id != 999 {
-        profile.try_update_rank(sol_rank_id);
-    }
-
-    profile.events_attended_this_week += increment;
-    let event_date: DateTime<Utc> = Utc::now();
-    profile.last_event_attended_date = Some(event_date);
-
-    profile.try_award_mark();
-
-    if let Err(e) = database::update_profile(profile, in_db, conn.into()).await {
-        eprintln!("Failed to update profile {}, with error {}", user_id, e);
-        return StatusCode::INTERNAL_SERVER_ERROR;
-    }
 
     StatusCode::OK
 }
@@ -379,7 +412,7 @@ async fn main() {
         .route("/profiles/promotable", get(get_promotable))
         .route("/profiles/create", post(create_profile))
         .route("/profiles/update", post(update_profiles))
-        .route("/profiles/increment/:id/:inc", post(increment_events))
+        .route("/profiles/increment/:id", post(increment_events))
         .route("/profiles/marks/:id", post(add_mark))
         .route("/events/:id", get(get_hosted))
         .route("/events", put(put_event))

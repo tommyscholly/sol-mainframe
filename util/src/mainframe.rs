@@ -398,17 +398,22 @@ pub async fn log_event(
     Ok(())
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct IncEventBody {
-    inc: i32,
-    event_kind: &'static str,
+    pub inc: i32,
+    pub event_kind: String,
 }
 
 pub async fn increment_events(user_id: u64, increment: i32, event_kind: &str) -> Result<()> {
+    let inc_body = IncEventBody {
+        inc: increment,
+        event_kind: event_kind.to_string(),
+    };
+
     let client = Client::new();
     client
-        .post(format!(
-            "{MAINFRAME_URL}/profiles/increment/{user_id}/{increment}"
-        ))
+        .post(format!("{MAINFRAME_URL}/profiles/increment/{user_id}"))
+        .json(&inc_body)
         .header("api-key", API_KEY)
         .send()
         .await?;
