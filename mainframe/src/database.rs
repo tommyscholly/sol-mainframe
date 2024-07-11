@@ -204,6 +204,15 @@ pub async fn remove_profile(user_id: u64, db: Arc<Connection>) -> Result<()> {
     Ok(())
 }
 
+pub async fn remove_progress(user_id: u64, db: Arc<Connection>) -> Result<()> {
+    db.execute(
+        "DELETE FROM militarum_progress WHERE user_id = ?1",
+        [user_id],
+    )
+    .await?;
+    Ok(())
+}
+
 pub async fn get_promotable(db: Connection) -> Result<Vec<u64>> {
     let mut rows = db
         .query(
@@ -311,8 +320,52 @@ pub async fn update_all(url: String, token: String) -> Result<()> {
             Some((_id, _)) => {}
             // user isnt in sol anymore, need to remove the profile
             None => {
-                println!("User {} is no longer in SOL", user.user_id);
+                println!(
+                    "User {}:{:?} is no longer in SOL",
+                    user.user_id, user.username
+                );
                 remove_profile(user.user_id, db).await?;
+            }
+        }
+    }
+
+    let db = crate::get_db_conn(url.clone(), token.clone()).await?;
+    let mut rows = db
+        .query(
+            r#"
+        SELECT * FROM militarum_progress"#,
+            (),
+        )
+        .await?;
+
+    let mut mili = VecDeque::new();
+    while let Ok(Some(r)) = rows.next().await {
+        let profile = Progress::from_row(&r);
+        mili.push_back(profile);
+    }
+
+    while let Some(user) = mili.pop_front() {
+        let id_opt = match roblox::get_rank_in_group(roblox::MILITARUM_GROUP_ID, user.user_id).await
+        {
+            Ok(id_opt) => id_opt,
+            Err(e) => {
+                println!("Got error {e}, waiting 30 seconds");
+                time::sleep(time::Duration::from_secs(30)).await;
+                mili.push_back(user);
+                continue;
+            }
+        };
+
+        let db = Arc::new(crate::get_db_conn(url.clone(), token.clone()).await?);
+        match id_opt {
+            Some((_id, _)) => {}
+            // user isnt in sol anymore, need to remove the profile
+            None => {
+                println!(
+                    "User {}:{:?} is no longer in the Militarum",
+                    user.user_id, user.username
+                );
+                remove_progress(user.user_id, db).await?;
             }
         }
     }
