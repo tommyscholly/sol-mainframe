@@ -164,13 +164,15 @@ pub async fn collect_attendance(
             if mci.user.id != member.user.id {
                 continue;
             }
-            let default = attended.iter().take(5).map(|&id| UserId::new(id)).collect();
+            let default: Vec<UserId> = attended.iter().map(|&id| UserId::new(id)).collect();
+            let len = default.len();
             let select_menu = CreateSelectMenu::new(
                 format!("{button_id}_select_menu"),
                 CreateSelectMenuKind::User {
                     default_users: Some(default),
                 },
-            );
+            )
+            .max_values(len.try_into().unwrap());
             let follow_up = CreateInteractionResponseFollowup::new()
                 .select_menu(select_menu)
                 .ephemeral(true);
