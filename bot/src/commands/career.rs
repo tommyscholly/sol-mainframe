@@ -71,6 +71,7 @@ pub async fn progress(
             mili_rank,
             progress.username.unwrap_or(format!("{roblox_user_id}"))
         ))
+        .description(format!("Progress to {}", mili_rank.next_rank_name()))
         .footer(make_footer())
         .thumbnail(headshot_url)
         .color(0x568259);

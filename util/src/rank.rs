@@ -166,6 +166,16 @@ impl MilitarumRank {
             },
         }
     }
+
+    pub fn next_rank_name(&self) -> String {
+        use MilitarumRank::*;
+        match *self {
+            Enlisted => "Conscript".into(),
+            Conscript => "Trooper".into(),
+            Trooper => "Senior Trooper".into(),
+            SeniorTrooper => "Astarte".into(),
+        }
+    }
 }
 
 impl Display for MilitarumRank {
