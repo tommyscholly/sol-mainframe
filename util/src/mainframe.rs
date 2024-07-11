@@ -175,8 +175,11 @@ impl Progress {
         let rts = row.get::<u64>(4).unwrap();
         let warfare_events = row.get::<u64>(5).unwrap();
         let zac_mins = row.get::<f64>(6).unwrap();
-        let pathway_str = row.get::<String>(7).unwrap();
-        let pathway = serde_json::from_str(&pathway_str).unwrap();
+        let pathway_str = row.get::<Option<String>>(7).unwrap();
+        let pathway = match pathway_str {
+            Some(s) => serde_json::from_str(&s).unwrap(),
+            None => None,
+        };
 
         Self {
             user_id,
