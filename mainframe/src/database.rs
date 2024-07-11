@@ -34,6 +34,7 @@ pub async fn get_progress(user_id: u64, mili_rank_id: u64, db: &Connection) -> P
         rts: 0,
         warfare_events: 0,
         zac_mins: 0.0,
+        pathway: None,
     };
 
     let mut response = db

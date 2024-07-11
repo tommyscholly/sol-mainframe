@@ -97,6 +97,7 @@ pub struct EventJsonBody {
     pub location: String,
     pub kind: String,
     pub metadata: Option<HashMap<String, HashMap<String, String>>>,
+    pub blacklist: Option<Vec<String>>,
 }
 
 fn has_date_rolled_over(previous_date: DateTime<Utc>) -> bool {
@@ -116,15 +117,6 @@ fn has_date_rolled_over(previous_date: DateTime<Utc>) -> bool {
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
-pub enum Pathway {
-    Helios {
-        lead_rts: u64,
-        lead_dts: u64,
-        helios_lectures: u64,
-    },
-}
-
-#[derive(Clone, Deserialize, Serialize, Debug)]
 // militarum progress
 pub struct Progress {
     pub user_id: u64,
@@ -134,7 +126,6 @@ pub struct Progress {
     pub rts: u64,
     pub warfare_events: u64,
     pub zac_mins: f64,
-    pub pathway: Option<Pathway>,
 }
 
 impl Progress {
@@ -175,8 +166,6 @@ impl Progress {
         let rts = row.get::<u64>(4).unwrap();
         let warfare_events = row.get::<u64>(5).unwrap();
         let zac_mins = row.get::<f64>(6).unwrap();
-        let pathway_str = row.get::<String>(7).unwrap();
-        let pathway = serde_json::from_str(&pathway_str).unwrap();
 
         Self {
             user_id,
@@ -186,7 +175,6 @@ impl Progress {
             dts,
             warfare_events,
             zac_mins,
-            pathway,
         }
     }
 }
