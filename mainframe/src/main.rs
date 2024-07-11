@@ -13,7 +13,8 @@ use cosmetics::CosmeticUserInfo;
 use libsql::{Builder, Connection};
 use sol_util::{
     mainframe::{
-        CreateProfileBody, Event, EventJsonBody, EventKind, IncEventBody, Profile, Progress,
+        CreateProfileBody, Event, EventJsonBody, EventKind, IncEventBody, Pathway, Profile,
+        Progress,
     },
     roblox,
 };
@@ -120,6 +121,45 @@ async fn get_progress(
     let mut progress = database::get_progress(user_id, mili_rank_id, &conn).await;
     progress.try_update_username().await;
     Json(Some(progress))
+}
+
+async fn set_pathway(
+    State(state): State<AppState>,
+    Path((user_id, pathway)): Path<(u64, String)>,
+) -> StatusCode {
+    let conn = get_db_conn(state.url, state.token).await.unwrap();
+
+    let mili_rank_id = match roblox::get_rank_in_group(roblox::MILITARUM_GROUP_ID, user_id).await {
+        Ok(None) => {
+            println!("Profile {user_id} retrieval failed, not in Militarum");
+            return StatusCode::BAD_REQUEST;
+        }
+        Ok(Some((id, _))) => id,
+        // this error is probably a timeout, we can normally ignore it
+        Err(_e) => 999,
+    };
+
+    let mut progress = database::get_progress(user_id, mili_rank_id, &conn).await;
+    if pathway == "HELIOS" {
+        progress.pathway = Some(Pathway::Helios {
+            lead_rts: 0,
+            lead_dts: 0,
+            helios_lectures: 0,
+            co_lead: if mili_rank_id == 4 { Some(0) } else { None },
+        })
+    } else {
+        progress.pathway = None;
+    }
+
+    if let Err(e) = database::update_progress(progress, Arc::new(conn)).await {
+        eprintln!(
+            "Failed to update militarum progress {}, with error {}",
+            user_id, e
+        );
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    StatusCode::OK
 }
 
 async fn get_profile(
@@ -408,6 +448,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/progress/:id", get(get_progress))
+        .route("/progress/:id/pathway/:pathway", post(set_pathway))
         .route("/profiles/:id", get(get_profile))
         .route("/profiles/promotable", get(get_promotable))
         .route("/profiles/create", post(create_profile))

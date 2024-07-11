@@ -7,7 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    rank::{self, Rank},
+    rank::{self, MilitarumRank, Rank},
     roblox,
 };
 
@@ -121,7 +121,50 @@ pub enum Pathway {
         lead_rts: u64,
         lead_dts: u64,
         helios_lectures: u64,
+        co_lead: Option<u64>,
     },
+}
+
+impl Pathway {
+    pub fn reqs(&self, rank: MilitarumRank) -> Option<Pathway> {
+        match *self {
+            Pathway::Helios {
+                lead_rts: _,
+                lead_dts: _,
+                helios_lectures: _,
+                co_lead: _,
+            } => match rank {
+                MilitarumRank::Enlisted => None,
+                MilitarumRank::Conscript => None,
+                MilitarumRank::Trooper => Some(Pathway::Helios {
+                    lead_rts: 3,
+                    lead_dts: 3,
+                    helios_lectures: 2,
+                    co_lead: None,
+                }),
+                MilitarumRank::SeniorTrooper => Some(Pathway::Helios {
+                    lead_rts: 4,
+                    lead_dts: 4,
+                    helios_lectures: 4,
+                    co_lead: Some(6),
+                }),
+            },
+        }
+    }
+
+    pub fn zac_mins(&self, rank: MilitarumRank) -> Option<f64> {
+        match *self {
+            Pathway::Helios {
+                lead_rts: _,
+                lead_dts: _,
+                helios_lectures: _,
+                co_lead: _,
+            } => match rank {
+                MilitarumRank::SeniorTrooper => Some(8.0),
+                _ => None,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, Debug)]
@@ -417,6 +460,19 @@ pub async fn increment_events(user_id: u64, increment: i32, event_kind: &str) ->
     client
         .post(format!("{MAINFRAME_URL}/profiles/increment/{user_id}"))
         .json(&inc_body)
+        .header("api-key", API_KEY)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+pub async fn set_pathway(user_id: u64, pathway: &str) -> Result<()> {
+    let client = Client::new();
+    client
+        .post(format!(
+            "{MAINFRAME_URL}/progress/{user_id}/pathway/{pathway}"
+        ))
         .header("api-key", API_KEY)
         .send()
         .await?;

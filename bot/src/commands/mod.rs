@@ -33,6 +33,20 @@ fn mark_bar(current: i32, goal: i32) -> String {
     result
 }
 
+fn make_bar(current: u64, goal: u64) -> String {
+    let mut result = String::new();
+
+    for _ in 0..current {
+        result += "<:RedCheckmark:1241905952144494642> ";
+    }
+
+    for _ in current..goal {
+        result += "<:UncheckedBox:1241931751295684678> ";
+    }
+
+    result
+}
+
 async fn get_roblox_id_from_member(member: u64, token: &str) -> Result<Option<u64>, Error> {
     Ok(Some(
         rowifi::get_user(member, 700090648170070056, token).await?,

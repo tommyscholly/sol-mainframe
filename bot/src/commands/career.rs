@@ -3,9 +3,10 @@ use poise::serenity_prelude::{
     ButtonStyle, ComponentInteractionCollector, CreateActionRow, CreateButton, CreateEmbed,
     CreateInteractionResponse, EditMessage, User,
 };
+use sol_util::mainframe::Pathway;
 use sol_util::rank::MilitarumRank;
 
-use crate::commands::{get_roblox_id_from_member, make_footer, mark_bar};
+use crate::commands::{get_roblox_id_from_member, make_bar, make_footer, mark_bar};
 use sol_util::{get_division_tags, rank::Rank, roblox};
 
 use crate::Context;
@@ -73,51 +74,105 @@ pub async fn progress(
         ))
         .description(format!("**Progress to {}**", mili_rank.next_rank_name()))
         .footer(make_footer())
-        .thumbnail(headshot_url)
-        .color(0x568259);
+        .thumbnail(headshot_url);
 
-    let reqs = mili_rank.reqs();
-    let embed = match reqs.dts {
-        Some(dts) => {
-            let dt_bar = mark_bar(progress.dts.try_into().unwrap(), dts.try_into().unwrap());
-            embed.field("Defense Trainings", dt_bar, false)
-        }
-        None => embed,
-    };
-    let embed = match reqs.rts {
-        Some(rts) => {
-            let rt_bar = mark_bar(progress.rts.try_into().unwrap(), rts.try_into().unwrap());
-            embed.field("Raid Trainings", rt_bar, false)
-        }
-        None => embed,
-    };
-    let embed = match reqs.warfare_events {
-        Some(we) => {
-            let we_bar = mark_bar(
-                progress.warfare_events.try_into().unwrap(),
-                we.try_into().unwrap(),
-            );
-            embed.field("Warfare Events", we_bar, false)
-        }
-        None => embed,
-    };
-    let embed = match reqs.zac_mins {
-        Some(mins) => {
-            if progress.zac_mins >= mins {
-                embed.field(
-                    format!("{} Minutes ZAC", mins),
-                    "<:RedCheckmark:1241905952144494642>",
-                    true,
-                )
-            } else {
-                embed.field(
-                    format!("{} Minutes ZAC", mins),
-                    "<:UncheckedBox:1241931751295684678>",
-                    true,
-                )
+    let embed = match progress.pathway {
+        Some(pathway) => match pathway.reqs(mili_rank.clone()) {
+            Some(reqs) => match (&pathway, reqs) {
+                (
+                    &Pathway::Helios {
+                        lead_rts: rts,
+                        lead_dts: dts,
+                        helios_lectures: lecs,
+                        co_lead: lead,
+                    },
+                    Pathway::Helios {
+                        lead_rts,
+                        lead_dts,
+                        helios_lectures,
+                        co_lead,
+                    },
+                ) => {
+                    let rts_bar = make_bar(rts, lead_rts);
+                    let dts_bar = make_bar(dts, lead_dts);
+                    let lec_bar = make_bar(lecs, helios_lectures);
+                    let embed = embed
+                        .field("RTs Lead", rts_bar, false)
+                        .field("DTs Lead", dts_bar, false)
+                        .field("Helios Lectures", lec_bar, false)
+                        .color(0xb38b5b);
+                    let embed = match (lead, co_lead) {
+                        (Some(l), Some(lreq)) => {
+                            let l_bar = make_bar(l, lreq);
+                            embed.field("Co-leadership", l_bar, false)
+                        }
+                        _ => embed,
+                    };
+                    match pathway.zac_mins(mili_rank) {
+                        Some(mins) => {
+                            if progress.zac_mins >= mins {
+                                embed.field(
+                                    format!("{} Minutes ZAC", mins),
+                                    "<:RedCheckmark:1241905952144494642>",
+                                    true,
+                                )
+                            } else {
+                                embed.field(
+                                    format!("{} Minutes ZAC", mins),
+                                    "<:UncheckedBox:1241931751295684678>",
+                                    true,
+                                )
+                            }
+                        }
+                        None => embed,
+                    }
+                }
+            },
+            None => embed,
+        },
+        None => {
+            let reqs = mili_rank.reqs();
+            let embed = match reqs.dts {
+                Some(dts) => {
+                    let dt_bar = make_bar(progress.dts, dts);
+                    embed.field("Defense Trainings", dt_bar, false)
+                }
+                None => embed,
+            };
+            let embed = embed.color(0x568259);
+            let embed = match reqs.rts {
+                Some(rts) => {
+                    let rt_bar = make_bar(progress.rts, rts);
+                    embed.field("Raid Trainings", rt_bar, false)
+                }
+                None => embed,
+            };
+            let embed = match reqs.warfare_events {
+                Some(we) => {
+                    let we_bar = make_bar(progress.warfare_events, we);
+                    embed.field("Warfare Events", we_bar, false)
+                }
+                None => embed,
+            };
+            match reqs.zac_mins {
+                Some(mins) => {
+                    if progress.zac_mins >= mins {
+                        embed.field(
+                            format!("{} Minutes ZAC", mins),
+                            "<:RedCheckmark:1241905952144494642>",
+                            true,
+                        )
+                    } else {
+                        embed.field(
+                            format!("{} Minutes ZAC", mins),
+                            "<:UncheckedBox:1241931751295684678>",
+                            true,
+                        )
+                    }
+                }
+                None => embed,
             }
         }
-        None => embed,
     };
     let embed = embed.field(
         "Militarum Primaried",
@@ -132,6 +187,52 @@ pub async fn progress(
     let reply = poise::CreateReply::default().embed(embed);
 
     ctx.send(reply).await?;
+    Ok(())
+}
+
+#[command(slash_command)]
+pub async fn set_pathway(
+    ctx: Context<'_>,
+    #[description = "Roblox username"] username: Option<String>,
+    #[description = "Discord user"] discord_user: Option<User>,
+    #[choices("HELIOS", "NONE")] pathway: &str,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    let roblox_user_id = match username {
+        Some(ref name) => {
+            let user_ids = roblox::get_user_ids_from_usernames(&[name.clone()]).await?;
+            if let Some(Some(id)) = user_ids.get(name) {
+                *id
+            } else {
+                ctx.say(&format!(
+                    "No user id for {name}, please check to see if it's their current username."
+                ))
+                .await?;
+                return Ok(());
+            }
+        }
+        None => {
+            let member = match discord_user {
+                Some(user) => user.id,
+                None => {
+                    ctx.reply("A discord user or username must be provided!")
+                        .await?;
+                    return Ok(());
+                }
+            }
+            .get();
+            match get_roblox_id_from_member(member, &ctx.data().rowifi_token).await? {
+                Some(id) => id,
+                None => {
+                    ctx.say("Unable to get author of this command.").await?;
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    sol_util::mainframe::set_pathway(roblox_user_id, pathway).await?;
+
     Ok(())
 }
 

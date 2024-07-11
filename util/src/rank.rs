@@ -124,7 +124,7 @@ pub struct MilitarumReqs {
     pub zac_mins: Option<f64>,
 }
 
-#[derive(FromPrimitive, ToPrimitive)]
+#[derive(FromPrimitive, ToPrimitive, Clone)]
 pub enum MilitarumRank {
     Enlisted = 1,
     Conscript = 2,
@@ -140,6 +140,12 @@ impl MilitarumRank {
     pub fn reqs(&self) -> MilitarumReqs {
         use MilitarumRank::*;
         match *self {
+            Enlisted => MilitarumReqs {
+                dts: None,
+                rts: None,
+                warfare_events: None,
+                zac_mins: None,
+            },
             Conscript => MilitarumReqs {
                 dts: Some(4),
                 rts: Some(4),
@@ -157,12 +163,6 @@ impl MilitarumRank {
                 rts: Some(6),
                 warfare_events: Some(12),
                 zac_mins: Some(10.0),
-            },
-            Enlisted => MilitarumReqs {
-                dts: None,
-                rts: None,
-                warfare_events: None,
-                zac_mins: None,
             },
         }
     }
