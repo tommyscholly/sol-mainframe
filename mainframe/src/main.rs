@@ -18,7 +18,7 @@ use sol_util::{
     },
     roblox,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use toml::Table;
 
 use std::{fs, future::IntoFuture, sync::Arc};
@@ -41,6 +41,7 @@ struct AppState {
     main_webhook: String, // for main group
     lb_webhook: String,
     event_queue: Arc<Mutex<event_queue::EventQueue>>,
+    last_lb: Arc<RwLock<Vec<(String, i32)>>>,
 }
 
 const API_KEY: &str = "B2XwN6Zdt3aRLDhzWq5vVnTgQCEMxkyfJusjrGKe7P49pYmS8b";
@@ -400,7 +401,8 @@ async fn get_hosted(State(state): State<AppState>, Path(host_id): Path<u64>) -> 
 
 async fn lb(State(state): State<AppState>) -> StatusCode {
     println!("updating lb");
-    match stats::weekly_activity_lb(state.lb_webhook, state.url, state.token).await {
+    let last = state.last_lb.write().await;
+    match stats::weekly_activity_lb(state.lb_webhook, state.url, state.token, &last).await {
         Ok(_) => StatusCode::OK,
         Err(e) => {
             println!("{e:?}");
@@ -444,6 +446,7 @@ async fn main() {
         main_webhook: main_event_webhook,
         lb_webhook: lb_event_webhook,
         event_queue: event_queue.clone(),
+        last_lb: Arc::new(RwLock::new(Vec::new())),
     };
 
     let app = Router::new()

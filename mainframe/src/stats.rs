@@ -4,22 +4,17 @@ use crate::{database, discord};
 use anyhow::Result;
 use chrono::Utc;
 
-use std::sync::{Mutex, OnceLock};
-
-static LB: OnceLock<Mutex<Vec<(String, i32)>>> = OnceLock::new();
-fn cached_lb() -> &'static Mutex<Vec<(String, i32)>> {
-    LB.get_or_init(|| Mutex::new(vec![]))
-}
-
-pub async fn weekly_activity_lb(webhook: String, url: String, token: String) -> Result<()> {
+pub async fn weekly_activity_lb(
+    webhook: String,
+    url: String,
+    token: String,
+    cached: &Vec<(String, i32)>,
+) -> Result<Vec<(String, i32)>> {
     let top_10_names = database::get_top(url, token, 10).await?;
-    let mut cached = cached_lb().lock().unwrap();
-    if top_10_names == *cached {
-        return Ok(());
-    } else {
-        *cached = top_10_names.clone();
-    }
 
+    if top_10_names == *cached {
+        return Ok(top_10_names);
+    }
     println!("got top {top_10_names:?}");
 
     let description = top_10_names
@@ -35,5 +30,7 @@ pub async fn weekly_activity_lb(webhook: String, url: String, token: String) -> 
         timestamp: Utc::now().to_rfc3339(),
     };
 
-    discord::activity_lb(webhook, embed).await
+    let _ = discord::activity_lb(webhook, embed).await;
+
+    Ok(top_10_names)
 }
