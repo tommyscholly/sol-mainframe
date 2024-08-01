@@ -96,7 +96,7 @@ async fn write_to_db(event: Event, db_url: String, db_token: String) {
 }
 
 // can get stuck in one of these for a while
-pub async fn process_event(event: EventJsonBody) -> Event {
+pub async fn process_event(event: EventJsonBody) -> Result<Event, EventJsonBody> {
     let mut names = event.names.clone();
     let mut attendees = Vec::new();
     loop {
@@ -131,9 +131,15 @@ pub async fn process_event(event: EventJsonBody) -> Event {
     }
 
     if attendees.len() != names.len() {
-        eprintln!("attendees does not match names");
+        return Err(event);
     }
-    Event::new(event.host, attendees, event.location, event.kind)
+
+    Ok(Event::new(
+        event.host,
+        attendees,
+        event.location,
+        event.kind,
+    ))
 }
 
 pub fn queue_loop(
@@ -150,7 +156,15 @@ pub fn queue_loop(
                 drop(q); // we drop the lock, otherwise everything might halt
                 println!("Popped queue event {event:?}");
                 let processed = process_event(event).await;
-                write_to_db(processed, db_url.clone(), db_token.clone()).await;
+                match processed {
+                    Ok(event) => {
+                        write_to_db(event, db_url.clone(), db_token.clone()).await;
+                    }
+                    Err(json_event) => {
+                        let mut q = queue.lock().await;
+                        q.push(json_event);
+                    }
+                }
             }
         }
     })
